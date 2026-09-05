@@ -105,6 +105,29 @@ export async function addManagedAccount(apiKey: string): Promise<ManagementAccou
   return body.account;
 }
 
+export interface OnboardResult {
+  account: ManagementAccount;
+  key_name: string;
+  fable5: "granted" | "already" | "skipped" | "failed";
+}
+
+export async function onboardManagedAccount(input: {
+  sessionToken: string;
+  name?: string;
+  grantFable5?: boolean;
+}): Promise<OnboardResult> {
+  return managementJson<OnboardResult>({
+    method: "POST",
+    path: "/onboard",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      session_token: input.sessionToken,
+      ...(input.name ? { name: input.name } : {}),
+      grant_fable5: input.grantFable5 === true,
+    }),
+  });
+}
+
 export async function setManagedDefaultProfile(
   id: string,
   defaultProfile: "sdk" | "sand",

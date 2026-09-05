@@ -10,6 +10,7 @@ import {
 import { fetchCursorSandQuota } from "../account/cursor-dashboard.js";
 import { readAccount } from "../account/service.js";
 import { CursorAccountFileStore, type StoredCursorAccount } from "../account/file-store.js";
+import { onboardCursorAccount, OnboardingError } from "../account/cursor-onboarding.js";
 import { SettingsStore } from "../core/settings/store.js";
 import { SETTINGS_SCHEMA, settingsEffect } from "../core/settings/schema.js";
 import { parseProxyValue, SettingsValidationError } from "../core/settings/validate.js";
@@ -628,6 +629,33 @@ export function createApp(input: {
           }
           return;
         }
+      }
+
+      if (path === "/v0/management/accounts/onboard" && method === "POST") {
+        const body = await readJsonBody(req, config.maxBodyBytes) as Record<string, unknown> | undefined;
+        const sessionToken = typeof body?.session_token === "string" ? body.session_token.trim() : "";
+        if (!sessionToken) throw invalidRequest("session_token is required");
+        const keyName = typeof body?.name === "string" ? body.name : undefined;
+        const grantFable5 = body?.grant_fable5 === true;
+        let result;
+        try {
+          result = await onboardCursorAccount({ sessionToken, keyName, grantFable5 });
+        } catch (error) {
+          if (error instanceof OnboardingError) {
+            // Map the closed/unauthorized cases to a clear client error rather
+            // than a 500, so the console can tell the operator what went wrong.
+            throw invalidRequest(`onboarding failed: ${error.reason}`);
+          }
+          throw error;
+        }
+        // Persist only the minted crsr_ key. The session token is discarded.
+        const account = accounts.add(result.apiKey);
+        sendJson(res, 201, {
+          account: publicAccount(account),
+          key_name: result.keyName,
+          fable5: result.fable5,
+        }, requestId);
+        return;
       }
 
       if (path === "/v0/management/accounts/update" && method === "PUT") {

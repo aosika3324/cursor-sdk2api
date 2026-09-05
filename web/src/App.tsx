@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { addManagedAccount, batchManagedAccounts, getHealth, getManagedAccounts, probeManagedAccount, removeManagedAccount, runPrompt, setManagedAccountProxy, setManagedDefaultProfile, updateManagedAccount, verifyManagedAccount, type ManagementAccount } from "./api";
+import { addManagedAccount, batchManagedAccounts, getHealth, getManagedAccounts, probeManagedAccount, removeManagedAccount, runPrompt, setManagedAccountProxy, setManagedDefaultProfile, updateManagedAccount, verifyManagedAccount, onboardManagedAccount, type ManagementAccount } from "./api";
 import { go, hrefFor, readRoute, type Route } from "./nav";
 import { RailNav } from "./RailNav";
 import { AccountDetailPage } from "./pages/AccountDetailPage";
@@ -227,6 +227,12 @@ const COPY = {
       planPercent: "Plan {p}%",
       badgeFableOn: "F5",
       badgeFableOff: "F5 ×",
+      importKey: "API Key",
+      importToken: "Session token",
+      tokenPlaceholder: "user_...::<session token>",
+      tokenHelp: "The gateway exchanges this browser session token for a crsr_ API key, then discards the token. It is never stored. A closed account cannot mint a key.",
+      grantFable5: "Enable Fable 5",
+      onboarding: "Exchanging",
     },
     quotaDetail: {
       title: "Quota",
@@ -475,6 +481,12 @@ const COPY = {
       planPercent: "套餐 {p}%",
       badgeFableOn: "F5",
       badgeFableOff: "F5 ×",
+      importKey: "API Key",
+      importToken: "会话令牌",
+      tokenPlaceholder: "user_...::<会话令牌>",
+      tokenHelp: "网关用这把浏览器会话令牌换取 crsr_ API Key，随即丢弃令牌，绝不存储。被封账号换不出 Key。",
+      grantFable5: "同时开通 Fable 5",
+      onboarding: "换取中",
     },
     quotaDetail: {
       title: "额度",
@@ -699,6 +711,28 @@ export function App() {
     }
   };
 
+  const onboardAccount = async (sessionToken: string, grantFable5: boolean) => {
+    setAdding(true);
+    setAddError("");
+    try {
+      const result = await onboardManagedAccount({ sessionToken, grantFable5 });
+      const account = result.account;
+      const next: RosterItem = {
+        id: account.id,
+        keyHint: account.key_hint,
+        addedAt: account.added_at,
+        testState: "testing",
+      };
+      setRoster((current) => (current.some((item) => item.id === next.id) ? current : [...current, next]));
+      setActiveId(next.id);
+      await probe(next.id);
+    } catch (error) {
+      setAddError(messageOf(error));
+    } finally {
+      setAdding(false);
+    }
+  };
+
   const removeAccount = async (id: string) => {
     try {
       await removeManagedAccount(id);
@@ -771,8 +805,7 @@ export function App() {
     }
   };
 
-  const moveAccount = async (id: string, direction: "up" | "down") => {
-    // The table is ordered by priority, so swapping with the neighbour's
+  const moveAccount = async (id: string, direction: "up" | "down") => {    // The table is ordered by priority, so swapping with the neighbour's
     // priority is what "move up/down" means. Equal priorities are spread first
     // so a swap has something to exchange.
     const ordered = [...roster].sort(
@@ -987,6 +1020,8 @@ export function App() {
             onBatch={(input) => void runBatch(input)}
             onMove={(id, direction) => void moveAccount(id, direction)}
             onQuota={setQuotaFor}
+            onOnboard={(token, f5) => void onboardAccount(token, f5)}
+            onboarding={adding}
           />
         ) : null}
         {route.page === "account" ? (

@@ -36,6 +36,12 @@ export interface AccountAdminCopy {
   planPercent: string;
   badgeFableOn: string;
   badgeFableOff: string;
+  importKey: string;
+  importToken: string;
+  tokenPlaceholder: string;
+  tokenHelp: string;
+  grantFable5: string;
+  onboarding: string;
 }
 
 export function AccountsPage({
@@ -56,6 +62,8 @@ export function AccountsPage({
   onBatch,
   onMove,
   onQuota,
+  onOnboard,
+  onboarding,
 }: {
   t: HomeCopy & { add: string; adding: string; keyPlaceholder: string; keyHelp: string; remove: string };
   admin: AccountAdminCopy;
@@ -78,10 +86,15 @@ export function AccountsPage({
   }) => void;
   onMove: (id: string, direction: "up" | "down") => void;
   onQuota: (id: string) => void;
+  onOnboard: (sessionToken: string, grantFable5: boolean) => void;
+  onboarding: boolean;
 }) {
   const passed = roster.filter((item) => item.testState === "pass").length;
   const failed = roster.filter((item) => item.testState === "fail").length;
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [mode, setMode] = useState<"key" | "token">("key");
+  const [tokenDraft, setTokenDraft] = useState("");
+  const [grantF5, setGrantF5] = useState(true);
 
   // Drop ids that no longer exist so a stale selection cannot act on them.
   const liveSelection = useMemo(
@@ -132,27 +145,79 @@ export function AccountsPage({
         .replace("{total}", String(roster.length))
         .replace("{ok}", String(passed))
         .replace("{bad}", String(failed))}</p>
-      <form
-        className="add-row page-add"
-        onSubmit={(event) => {
-          event.preventDefault();
-          onAdd();
-        }}
-      >
-        <input
-          type="password"
-          value={draftKey}
-          autoComplete="off"
-          spellCheck={false}
-          placeholder={t.keyPlaceholder}
-          onChange={(event) => onDraft(event.target.value)}
-        />
-        <Button type="submit" variant="primary" size="sm" loading={adding} disabled={adding}>
-          {adding ? t.adding : t.add}
-        </Button>
-      </form>
+      <div className="import-tabs" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === "key"}
+          className={mode === "key" ? "is-active" : ""}
+          onClick={() => setMode("key")}
+        >
+          {admin.importKey}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === "token"}
+          className={mode === "token" ? "is-active" : ""}
+          onClick={() => setMode("token")}
+        >
+          {admin.importToken}
+        </button>
+      </div>
+      {mode === "key" ? (
+        <form
+          className="add-row page-add"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onAdd();
+          }}
+        >
+          <input
+            type="password"
+            value={draftKey}
+            autoComplete="off"
+            spellCheck={false}
+            placeholder={t.keyPlaceholder}
+            onChange={(event) => onDraft(event.target.value)}
+          />
+          <Button type="submit" variant="primary" size="sm" loading={adding} disabled={adding}>
+            {adding ? t.adding : t.add}
+          </Button>
+        </form>
+      ) : (
+        <form
+          className="add-row page-add"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!tokenDraft.trim()) return;
+            onOnboard(tokenDraft.trim(), grantF5);
+            setTokenDraft("");
+          }}
+        >
+          <input
+            type="password"
+            value={tokenDraft}
+            autoComplete="off"
+            spellCheck={false}
+            placeholder={admin.tokenPlaceholder}
+            onChange={(event) => setTokenDraft(event.target.value)}
+          />
+          <label className="inline-check">
+            <input
+              type="checkbox"
+              checked={grantF5}
+              onChange={(event) => setGrantF5(event.target.checked)}
+            />
+            {admin.grantFable5}
+          </label>
+          <Button type="submit" variant="primary" size="sm" loading={onboarding} disabled={onboarding}>
+            {onboarding ? admin.onboarding : t.add}
+          </Button>
+        </form>
+      )}
       {addError ? <p className="field-error" role="alert">{addError}</p> : null}
-      <p className="note">{t.keyHelp}</p>
+      <p className="note">{mode === "key" ? t.keyHelp : admin.tokenHelp}</p>
       {liveSelection.size > 0 ? (
         <div className="batch-bar" role="group">
           <span>{admin.selected.replace("{n}", String(liveSelection.size))}</span>
