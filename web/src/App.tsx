@@ -232,6 +232,7 @@ const COPY = {
       tokenPlaceholder: "user_...::<session token>",
       tokenHelp: "The gateway exchanges this browser session token for a crsr_ API key, then discards the token. It is never stored. A closed account cannot mint a key.",
       grantFable5: "Enable Fable 5",
+      claimSand: "Claim Bot quota",
       onboarding: "Exchanging",
     },
     quotaDetail: {
@@ -486,6 +487,7 @@ const COPY = {
       tokenPlaceholder: "user_...::<会话令牌>",
       tokenHelp: "网关用这把浏览器会话令牌换取 crsr_ API Key，随即丢弃令牌，绝不存储。被封账号换不出 Key。",
       grantFable5: "同时开通 Fable 5",
+      claimSand: "同时领取 Bot 额度",
       onboarding: "换取中",
     },
     quotaDetail: {
@@ -711,11 +713,11 @@ export function App() {
     }
   };
 
-  const onboardAccount = async (sessionToken: string, grantFable5: boolean) => {
+  const onboardAccount = async (sessionToken: string, grantFable5: boolean, claimSand: boolean) => {
     setAdding(true);
     setAddError("");
     try {
-      const result = await onboardManagedAccount({ sessionToken, grantFable5 });
+      const result = await onboardManagedAccount({ sessionToken, grantFable5, claimSand });
       const account = result.account;
       const next: RosterItem = {
         id: account.id,
@@ -1020,7 +1022,7 @@ export function App() {
             onBatch={(input) => void runBatch(input)}
             onMove={(id, direction) => void moveAccount(id, direction)}
             onQuota={setQuotaFor}
-            onOnboard={(token, f5) => void onboardAccount(token, f5)}
+            onOnboard={(token, f5, bot) => void onboardAccount(token, f5, bot)}
             onboarding={adding}
           />
         ) : null}

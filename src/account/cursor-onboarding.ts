@@ -22,6 +22,7 @@ export interface OnboardingResult {
   apiKey: string;
   keyName: string;
   fable5: "granted" | "already" | "skipped" | "failed";
+  sand?: SandClaimResult;
 }
 
 export type OnboardingFailureReason =
@@ -140,6 +141,7 @@ export interface OnboardingOptions {
   sessionToken: string;
   keyName?: string;
   grantFable5?: boolean;
+  claimSand?: boolean;
   request?: Fetch;
 }
 
@@ -184,7 +186,13 @@ export async function onboardCursorAccount(options: OnboardingOptions): Promise<
     fable5 = await grantFable5Consent(sessionToken, request);
   }
 
-  return { apiKey, keyName, fable5 };
+  // 4. Optionally claim Grok Bot (Sand) entitlement.
+  let sand: SandClaimResult | undefined;
+  if (options.claimSand) {
+    sand = await claimSand(sessionToken, request);
+  }
+
+  return { apiKey, keyName, fable5, ...(sand ? { sand } : {}) };
 }
 
 /**
@@ -225,6 +233,90 @@ export async function grantFable5Consent(
     // Key creation already succeeded; a consent hiccup is not fatal.
     return "failed";
   }
+}
+
+export type SandClaimOutcome =
+  | "already"
+  | "team_ok"
+  | "activated"
+  | "card_required"
+  | "dead"
+  | "failed";
+
+export interface SandClaimResult {
+  outcome: SandClaimOutcome;
+  teamId?: number;
+  detail?: string;
+  cardUrl?: string;
+}
+
+/**
+ * Claim Grok Bot (Sand) entitlement for the account behind this session token,
+ * mirroring SandClaimer's decision tree:
+ *
+ *   granted/unlocked        -> already
+ *   team account (teamId)   -> request-sand-team-access + onboarding mark
+ *   personal, activatable   -> start-sand-trial
+ *   personal, free tier     -> card_required (stripe url)
+ *   token dead (401/403)    -> dead
+ *
+ * Never throws: a claim failure must not abort a key exchange that already
+ * succeeded. Returns a typed outcome instead.
+ */
+export async function claimSand(
+  sessionToken: string,
+  request: Fetch = globalThis.fetch,
+): Promise<SandClaimResult> {
+  const token = normalizeSessionToken(sessionToken);
+  const soft = async (path: string, body: unknown) => {
+    try {
+      return await dashboardCall(path, token, body, request);
+    } catch (error) {
+      if (error instanceof OnboardingError) {
+        return { status: 0, json: { __error: error.reason } as Record<string, unknown> };
+      }
+      throw error;
+    }
+  };
+
+  // 1. Authoritative access status. A dead token shows up as unauthorized.
+  const access = await soft("get-sand-access-status", {});
+  if (access.json.__error === "account_closed") return { outcome: "dead", detail: "account_closed" };
+  if (access.status === 401 || access.json.__error === "session_unauthorized") {
+    return { outcome: "dead", detail: "session_unauthorized" };
+  }
+  const state = typeof access.json.state === "string" ? access.json.state : "";
+  const planGrants = access.json.proAndSuperGrokPlansGrantAccess === true;
+  if (state === "SAND_ACCESS_STATE_GRANTED" || planGrants) {
+    return { outcome: "already", detail: state || "plan_grants_access" };
+  }
+
+  // 2. Resolve teamId to pick the team vs personal path.
+  const me = await soft("get-me", {});
+  const rawTeam = me.json.teamId;
+  const teamId = typeof rawTeam === "number" && rawTeam > 0 ? rawTeam : undefined;
+
+  if (teamId !== undefined) {
+    const team = await soft("request-sand-team-access", { teamId });
+    if (team.status === 200) {
+      // Idempotent onboarding mark; failure here does not change the outcome.
+      await soft("update-team-sand-onboarding-completed", { teamId });
+      return { outcome: "team_ok", teamId, detail: "team access requested" };
+    }
+    return { outcome: "failed", teamId, detail: `team request HTTP ${team.status}` };
+  }
+
+  // 3. Personal trial.
+  const trial = await soft("start-sand-trial", {});
+  if (trial.status !== 200) {
+    return { outcome: "failed", detail: `trial HTTP ${trial.status}` };
+  }
+  const blob = JSON.stringify(trial.json).toLowerCase();
+  if (blob.includes("cardverificationrequired") || blob.includes("card_verification")) {
+    const match = /"(https:\/\/[^"]*(?:checkout|stripe)[^"]*)"/.exec(JSON.stringify(trial.json));
+    return { outcome: "card_required", cardUrl: match?.[1], detail: "card verification required" };
+  }
+  return { outcome: "activated", detail: "personal trial activated" };
 }
 
 export { credentialFingerprint };

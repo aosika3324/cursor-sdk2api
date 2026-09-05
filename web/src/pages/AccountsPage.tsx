@@ -41,6 +41,7 @@ export interface AccountAdminCopy {
   tokenPlaceholder: string;
   tokenHelp: string;
   grantFable5: string;
+  claimSand: string;
   onboarding: string;
 }
 
@@ -86,7 +87,7 @@ export function AccountsPage({
   }) => void;
   onMove: (id: string, direction: "up" | "down") => void;
   onQuota: (id: string) => void;
-  onOnboard: (sessionToken: string, grantFable5: boolean) => void;
+  onOnboard: (sessionToken: string, grantFable5: boolean, claimSand: boolean) => void;
   onboarding: boolean;
 }) {
   const passed = roster.filter((item) => item.testState === "pass").length;
@@ -95,6 +96,7 @@ export function AccountsPage({
   const [mode, setMode] = useState<"key" | "token">("key");
   const [tokenDraft, setTokenDraft] = useState("");
   const [grantF5, setGrantF5] = useState(true);
+  const [claimBot, setClaimBot] = useState(true);
 
   // Drop ids that no longer exist so a stale selection cannot act on them.
   const liveSelection = useMemo(
@@ -191,7 +193,7 @@ export function AccountsPage({
           onSubmit={(event) => {
             event.preventDefault();
             if (!tokenDraft.trim()) return;
-            onOnboard(tokenDraft.trim(), grantF5);
+            onOnboard(tokenDraft.trim(), grantF5, claimBot);
             setTokenDraft("");
           }}
         >
@@ -210,6 +212,14 @@ export function AccountsPage({
               onChange={(event) => setGrantF5(event.target.checked)}
             />
             {admin.grantFable5}
+          </label>
+          <label className="inline-check">
+            <input
+              type="checkbox"
+              checked={claimBot}
+              onChange={(event) => setClaimBot(event.target.checked)}
+            />
+            {admin.claimSand}
           </label>
           <Button type="submit" variant="primary" size="sm" loading={onboarding} disabled={onboarding}>
             {onboarding ? admin.onboarding : t.add}

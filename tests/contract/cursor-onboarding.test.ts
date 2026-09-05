@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  claimSand,
   looksLikeSessionToken,
   onboardCursorAccount,
   OnboardingError,
@@ -122,5 +123,82 @@ describe("onboardCursorAccount", () => {
     const result = await onboardCursorAccount({ sessionToken: token, request: request as never });
     expect(JSON.stringify(result)).not.toContain(token);
     expect(JSON.stringify(result)).not.toContain("::");
+  });
+});
+
+describe("claimSand", () => {
+  function router(map: Record<string, () => Response>) {
+    return vi.fn(async (url: string) => {
+      for (const [key, fn] of Object.entries(map)) {
+        if (url.endsWith(key)) return fn();
+      }
+      throw new Error(`unexpected url ${url}`);
+    });
+  }
+
+  it("reports already when the plan grants access", async () => {
+    const request = router({
+      "get-sand-access-status": () => jsonResponse({ proAndSuperGrokPlansGrantAccess: true }),
+    });
+    const r = await claimSand(sessionToken(), request as never);
+    expect(r.outcome).toBe("already");
+  });
+
+  it("reports already when state is granted", async () => {
+    const request = router({
+      "get-sand-access-status": () => jsonResponse({ state: "SAND_ACCESS_STATE_GRANTED" }),
+    });
+    expect((await claimSand(sessionToken(), request as never)).outcome).toBe("already");
+  });
+
+  it("takes the team path when a teamId is present", async () => {
+    const request = router({
+      "get-sand-access-status": () => jsonResponse({ state: "SAND_ACCESS_STATE_NONE" }),
+      "get-me": () => jsonResponse({ teamId: 4242, email: "t@x.co" }),
+      "request-sand-team-access": () => jsonResponse({ ok: true }),
+      "update-team-sand-onboarding-completed": () => jsonResponse({ ok: true }),
+    });
+    const r = await claimSand(sessionToken(), request as never);
+    expect(r).toMatchObject({ outcome: "team_ok", teamId: 4242 });
+  });
+
+  it("starts a personal trial when there is no team", async () => {
+    const request = router({
+      "get-sand-access-status": () => jsonResponse({ state: "SAND_ACCESS_STATE_NONE" }),
+      "get-me": () => jsonResponse({ teamId: 0 }),
+      "start-sand-trial": () => jsonResponse({ activated: true }),
+    });
+    expect((await claimSand(sessionToken(), request as never)).outcome).toBe("activated");
+  });
+
+  it("reports card_required for a free account", async () => {
+    const request = router({
+      "get-sand-access-status": () => jsonResponse({ state: "SAND_ACCESS_STATE_NONE" }),
+      "get-me": () => jsonResponse({ teamId: 0 }),
+      "start-sand-trial": () =>
+        jsonResponse({ cardVerificationRequired: true, url: "https://checkout.stripe.com/x" }),
+    });
+    const r = await claimSand(sessionToken(), request as never);
+    expect(r.outcome).toBe("card_required");
+    expect(r.cardUrl).toBe("https://checkout.stripe.com/x");
+  });
+
+  it("reports dead when the token is unauthorized", async () => {
+    const request = router({
+      "get-sand-access-status": () =>
+        jsonResponse({ error: { details: [{ error: "NOT_LOGGED_IN" }] } }, 401),
+    });
+    expect((await claimSand(sessionToken(), request as never)).outcome).toBe("dead");
+  });
+
+  it("never throws on a soft failure mid-flow", async () => {
+    const request = router({
+      "get-sand-access-status": () => jsonResponse({ state: "SAND_ACCESS_STATE_NONE" }),
+      "get-me": () => jsonResponse({ teamId: 7 }),
+      "request-sand-team-access": () => jsonResponse({ error: "nope" }, 500),
+      "update-team-sand-onboarding-completed": () => jsonResponse({}),
+    });
+    const r = await claimSand(sessionToken(), request as never);
+    expect(r.outcome).toBe("failed");
   });
 });

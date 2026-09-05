@@ -637,9 +637,10 @@ export function createApp(input: {
         if (!sessionToken) throw invalidRequest("session_token is required");
         const keyName = typeof body?.name === "string" ? body.name : undefined;
         const grantFable5 = body?.grant_fable5 === true;
+        const claimSand = body?.claim_sand === true;
         let result;
         try {
-          result = await onboardCursorAccount({ sessionToken, keyName, grantFable5 });
+          result = await onboardCursorAccount({ sessionToken, keyName, grantFable5, claimSand });
         } catch (error) {
           if (error instanceof OnboardingError) {
             // Map the closed/unauthorized cases to a clear client error rather
@@ -654,6 +655,7 @@ export function createApp(input: {
           account: publicAccount(account),
           key_name: result.keyName,
           fable5: result.fable5,
+          ...(result.sand ? { sand: result.sand } : {}),
         }, requestId);
         return;
       }

@@ -109,12 +109,19 @@ export interface OnboardResult {
   account: ManagementAccount;
   key_name: string;
   fable5: "granted" | "already" | "skipped" | "failed";
+  sand?: {
+    outcome: "already" | "team_ok" | "activated" | "card_required" | "dead" | "failed";
+    teamId?: number;
+    detail?: string;
+    cardUrl?: string;
+  };
 }
 
 export async function onboardManagedAccount(input: {
   sessionToken: string;
   name?: string;
   grantFable5?: boolean;
+  claimSand?: boolean;
 }): Promise<OnboardResult> {
   return managementJson<OnboardResult>({
     method: "POST",
@@ -124,6 +131,7 @@ export async function onboardManagedAccount(input: {
       session_token: input.sessionToken,
       ...(input.name ? { name: input.name } : {}),
       grant_fable5: input.grantFable5 === true,
+      claim_sand: input.claimSand === true,
     }),
   });
 }
