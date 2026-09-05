@@ -1154,6 +1154,126 @@ textarea {
   .row-action-group { flex-wrap: wrap; }
 }
 
+/* Account admin: batch bar and row metadata */
+.batch-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 12px 0;
+  padding: 8px 12px;
+  border: 1px solid var(--line, #2a2a2a);
+  border-radius: 10px;
+  background: var(--surface-2, #141414);
+  font-size: 13px;
+}
+
+.grid-table td.col-select,
+.grid-table th.col-select {
+  width: 36px;
+  text-align: center;
+}
+
+.grid-table tr.row-disabled {
+  opacity: 0.55;
+}
+
+.row-meta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.row-meta .tag-off {
+  font-style: normal;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--line, #2a2a2a);
+}
+
+.row-error {
+  color: var(--danger, #d66);
+}
+
+/* System settings page */
+.settings-grid {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.settings-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 220px);
+  align-items: center;
+  gap: 12px;
+}
+
+.settings-row__key {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 13px;
+  color: var(--text-muted, #8b8b8b);
+  overflow-wrap: anywhere;
+}
+
+.settings-row input[type="text"],
+.settings-row input[type="password"],
+.settings-row input[type="number"],
+.settings-row select {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--line, #2a2a2a);
+  border-radius: 8px;
+  background: var(--surface-2, #141414);
+  color: inherit;
+  font: inherit;
+}
+
+.settings-row input[type="checkbox"] {
+  justify-self: start;
+  width: 18px;
+  height: 18px;
+}
+
+.settings-row--readonly {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 220px);
+  align-items: center;
+  gap: 12px;
+  opacity: 0.72;
+}
+
+.settings-row__readonly {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.settings-note {
+  margin: 8px 0 0;
+  font-size: 13px;
+}
+
+.settings-note--muted {
+  color: var(--text-muted, #8b8b8b);
+}
+
+.settings-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 720px) {
+  .settings-row,
+  .settings-row--readonly {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

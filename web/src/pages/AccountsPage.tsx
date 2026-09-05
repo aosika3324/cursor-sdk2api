@@ -1,11 +1,36 @@
+import { useMemo, useState } from "react";
 import { Button } from "../bflabs/Button";
 import type { RosterItem } from "../roster";
 import { AccountTable } from "./AccountTable";
 import type { HomeCopy } from "./HomePage";
 import { ActionLink, PageFrame } from "./shared";
 
+export interface AccountAdminCopy {
+  edit: string;
+  proxy: string;
+  verify: string;
+  enable: string;
+  disable: string;
+  disabledTag: string;
+  priority: string;
+  proxyDirect: string;
+  selected: string;
+  batchEnable: string;
+  batchDisable: string;
+  batchDelete: string;
+  batchPriority: string;
+  batchConfirmDelete: string;
+  clearSelection: string;
+  labelPrompt: string;
+  notePrompt: string;
+  priorityPrompt: string;
+  proxyPrompt: string;
+  proxyClearHint: string;
+}
+
 export function AccountsPage({
   t,
+  admin,
   draftKey,
   addError,
   adding,
@@ -14,8 +39,14 @@ export function AccountsPage({
   onAdd,
   onTest,
   onRemove,
+  onEdit,
+  onProxy,
+  onVerify,
+  onDisable,
+  onBatch,
 }: {
   t: HomeCopy & { add: string; adding: string; keyPlaceholder: string; keyHelp: string; remove: string };
+  admin: AccountAdminCopy;
   draftKey: string;
   addError: string;
   adding: boolean;
@@ -24,9 +55,59 @@ export function AccountsPage({
   onAdd: () => void;
   onTest: (id: string) => void;
   onRemove: (id: string) => void;
+  onEdit: (id: string) => void;
+  onProxy: (id: string) => void;
+  onVerify: (id: string) => void;
+  onDisable: (id: string, disabled: boolean) => void;
+  onBatch: (input: {
+    ids: string[];
+    action: "enable" | "disable" | "delete" | "priority";
+    priority?: number;
+  }) => void;
 }) {
   const passed = roster.filter((item) => item.testState === "pass").length;
   const failed = roster.filter((item) => item.testState === "fail").length;
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  // Drop ids that no longer exist so a stale selection cannot act on them.
+  const liveSelection = useMemo(
+    () => new Set([...selected].filter((id) => roster.some((item) => item.id === id))),
+    [selected, roster],
+  );
+
+  const toggle = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    setSelected((prev) =>
+      prev.size === roster.length ? new Set() : new Set(roster.map((item) => item.id)),
+    );
+  };
+
+  const runBatch = (action: "enable" | "disable" | "delete" | "priority") => {
+    const ids = [...liveSelection];
+    if (ids.length === 0) return;
+    if (action === "delete" && !window.confirm(admin.batchConfirmDelete.replace("{n}", String(ids.length)))) {
+      return;
+    }
+    if (action === "priority") {
+      const raw = window.prompt(admin.priorityPrompt, "100");
+      if (raw == null) return;
+      const priority = Number.parseInt(raw, 10);
+      if (!Number.isInteger(priority)) return;
+      onBatch({ ids, action, priority });
+    } else {
+      onBatch({ ids, action });
+    }
+    setSelected(new Set());
+  };
+
   return (
     <PageFrame
       kicker={t.manage}
@@ -58,6 +139,16 @@ export function AccountsPage({
       </form>
       {addError ? <p className="field-error" role="alert">{addError}</p> : null}
       <p className="note">{t.keyHelp}</p>
+      {liveSelection.size > 0 ? (
+        <div className="batch-bar" role="group">
+          <span>{admin.selected.replace("{n}", String(liveSelection.size))}</span>
+          <Button variant="secondary" size="sm" onClick={() => runBatch("enable")}>{admin.batchEnable}</Button>
+          <Button variant="secondary" size="sm" onClick={() => runBatch("disable")}>{admin.batchDisable}</Button>
+          <Button variant="secondary" size="sm" onClick={() => runBatch("priority")}>{admin.batchPriority}</Button>
+          <Button variant="quiet" size="sm" onClick={() => runBatch("delete")}>{admin.batchDelete}</Button>
+          <Button variant="quiet" size="sm" onClick={() => setSelected(new Set())}>{admin.clearSelection}</Button>
+        </div>
+      ) : null}
       {roster.length === 0 ? <p className="empty">{t.noAccounts}</p> : (
         <AccountTable
           items={roster}
@@ -75,6 +166,25 @@ export function AccountsPage({
           headers={t.headers}
           onTest={onTest}
           onRemove={onRemove}
+          extras={{
+            selected: liveSelection,
+            onToggle: toggle,
+            onToggleAll: toggleAll,
+            onEdit,
+            onProxy,
+            onVerify,
+            onDisable,
+            labels: {
+              edit: admin.edit,
+              proxy: admin.proxy,
+              verify: admin.verify,
+              enable: admin.enable,
+              disable: admin.disable,
+              disabledTag: admin.disabledTag,
+              priority: admin.priority,
+              proxyDirect: admin.proxyDirect,
+            },
+          }}
         />
       )}
     </PageFrame>

@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { addManagedAccount, getHealth, getManagedAccounts, probeManagedAccount, removeManagedAccount, runPrompt, setManagedDefaultProfile } from "./api";
+import { addManagedAccount, batchManagedAccounts, getHealth, getManagedAccounts, probeManagedAccount, removeManagedAccount, runPrompt, setManagedAccountProxy, setManagedDefaultProfile, updateManagedAccount, verifyManagedAccount, type ManagementAccount } from "./api";
 import { go, hrefFor, readRoute, type Route } from "./nav";
 import { RailNav } from "./RailNav";
 import { AccountDetailPage } from "./pages/AccountDetailPage";
 import { AccountsPage } from "./pages/AccountsPage";
 import { ConnectPage } from "./pages/ConnectPage";
+import { SettingsPage } from "./pages/SettingsPage";
 import type { RecipeName } from "./recipes";
 import { HomePage, type HomeCopy } from "./pages/HomePage";
 import { PlaygroundPage } from "./pages/PlaygroundPage";
@@ -31,11 +32,13 @@ const COPY = {
     navAccounts: "Accounts",
     navQuota: "Quota",
     navPlay: "Playground",
+    navSettings: "Settings",
     navHomeMeta: "Runtime and API URLs",
     navStartMeta: "Client recipes",
     navAccountsMeta: "Persistent credentials",
     navQuotaMeta: "Cursor dashboard usage",
     navPlayMeta: "Messages / Chat / Responses",
+    navSettingsMeta: "Runtime configuration",
     consoleTag: "Local console",
     ready: "Ready",
     unavailable: "Down",
@@ -192,7 +195,51 @@ const COPY = {
       workspaceBody:
         "Grok Build and Claude Code edit files with their own local tools in your project directory. This gateway only runs the model. Cursor SDK uses an empty workspace, so the model may emit that absolute path. Use a relative path or your project path.",
     },
+    accountAdmin: {
+      edit: "Edit",
+      proxy: "Proxy",
+      verify: "Verify",
+      enable: "Enable",
+      disable: "Disable",
+      disabledTag: "Disabled",
+      priority: "P",
+      proxyDirect: "direct",
+      selected: "{n} selected",
+      batchEnable: "Enable",
+      batchDisable: "Disable",
+      batchDelete: "Delete",
+      batchPriority: "Set priority",
+      batchConfirmDelete: "Delete {n} account(s)? This cannot be undone.",
+      clearSelection: "Clear",
+      labelPrompt: "Label for this account",
+      notePrompt: "Note",
+      priorityPrompt: "Priority (0-1000, lower is preferred)",
+      proxyPrompt: "Proxy URL (http, https, or socks5). Leave empty to clear.",
+      proxyClearHint: "Empty clears the proxy.",
+    },
     keyNeeded: "Paste a Cursor API key first.",
+    settings: {
+      title: "System settings",
+      kicker: "Runtime",
+      hot: "Applies immediately",
+      hotHint: "Saved to $STATE_DIR/config.json and in effect at once. Running requests are not interrupted.",
+      newSessions: "Applies to new sessions",
+      newSessionsHint: "A live Cursor Agent keeps the value it was created with. Existing sessions are unaffected.",
+      restart: "Requires a restart",
+      restartHint: "Read-only here. These are fixed when the process starts; change them in the environment and restart the container.",
+      save: "Save",
+      saving: "Saving",
+      saved: "Saved",
+      reload: "Reload",
+      seeded: "Seeded from environment on first start. This file is now authoritative, so environment changes no longer override it.",
+      proxyUrl: "Proxy URL",
+      proxyUser: "Username",
+      proxyPassword: "Password",
+      proxyClear: "Clear proxy",
+      proxyConfigured: "Configured",
+      proxyNone: "Direct connection",
+      proxySecretHidden: "Stored credentials are never returned to the browser. Re-enter them to change the proxy.",
+    },
   },
   zh: {
     skip: "跳到主要内容",
@@ -205,11 +252,13 @@ const COPY = {
     navAccounts: "账号",
     navQuota: "配额",
     navPlay: "协议试跑",
+    navSettings: "系统设置",
     navHomeMeta: "运行控制和 API 地址",
     navStartMeta: "客户端配方",
     navAccountsMeta: "持久化凭证",
     navQuotaMeta: "官方限额",
     navPlayMeta: "Messages / Chat / Responses",
+    navSettingsMeta: "运行时配置",
     consoleTag: "本机控制台",
     ready: "就绪",
     unavailable: "不可用",
@@ -366,7 +415,51 @@ const COPY = {
       workspaceBody:
         "Grok Build / Claude Code 改文件用的是它们自己的本机工具，工作区是你的项目目录。这个网关只提供模型推理。Cursor SDK 的 cwd 是空目录，所以模型有时会吐出网关绝对路径。写相对路径或你的项目路径就能改本地文件。",
     },
+    accountAdmin: {
+      edit: "编辑资料",
+      proxy: "代理",
+      verify: "真实探测",
+      enable: "启用",
+      disable: "禁用",
+      disabledTag: "已禁用",
+      priority: "优先级",
+      proxyDirect: "直连",
+      selected: "已选 {n} 个",
+      batchEnable: "批量启用",
+      batchDisable: "批量禁用",
+      batchDelete: "批量删除",
+      batchPriority: "设置优先级",
+      batchConfirmDelete: "确认删除 {n} 个账号？此操作不可撤销。",
+      clearSelection: "取消选择",
+      labelPrompt: "该账号的备注名",
+      notePrompt: "备注",
+      priorityPrompt: "优先级（0-1000，越小越优先）",
+      proxyPrompt: "代理地址（http / https / socks5）。留空则清除。",
+      proxyClearHint: "留空即清除代理。",
+    },
     keyNeeded: "先粘贴一把 Cursor Key。",
+    settings: {
+      title: "系统设置",
+      kicker: "运行时",
+      hot: "立即生效",
+      hotHint: "保存到 $STATE_DIR/config.json 并立刻生效。不会打断正在进行的请求。",
+      newSessions: "仅新会话生效",
+      newSessionsHint: "已建立的 Cursor Agent 保持创建时的取值，现有会话不受影响。",
+      restart: "需要重启",
+      restartHint: "此处只读。这些值在进程启动时固定，需改环境变量并重启容器。",
+      save: "保存",
+      saving: "保存中",
+      saved: "已保存",
+      reload: "重新读取",
+      seeded: "首次启动时从环境变量播种。现在以此文件为准，环境变量不再覆盖。",
+      proxyUrl: "代理地址",
+      proxyUser: "用户名",
+      proxyPassword: "密码",
+      proxyClear: "清除代理",
+      proxyConfigured: "已配置",
+      proxyNone: "直连",
+      proxySecretHidden: "已存的凭据不会回传浏览器。要更改请重新填写。",
+    },
   },
 } as const;
 
@@ -474,6 +567,12 @@ export function App() {
         keyHint: account.key_hint,
         addedAt: account.added_at,
         testState: "idle",
+        label: account.label ?? "",
+        disabled: account.disabled ?? false,
+        priority: account.priority ?? 100,
+        note: account.note ?? "",
+        proxy: account.proxy,
+        lastError: account.last_error ?? null,
       }));
       setRoster(next);
       setActiveId((current) => next.some((item) => item.id === current) ? current : next[0]?.id ?? "");
@@ -560,6 +659,104 @@ export function App() {
     if (route.accountId === id) go("accounts");
   };
 
+  const applyAccount = (account: ManagementAccount) => {
+    patchRoster(account.id, {
+      label: account.label ?? "",
+      disabled: account.disabled ?? false,
+      priority: account.priority ?? 100,
+      note: account.note ?? "",
+      proxy: account.proxy,
+      lastError: account.last_error ?? null,
+    });
+  };
+
+  const editAccount = async (id: string) => {
+    const item = roster.find((entry) => entry.id === id);
+    const label = window.prompt(t.accountAdmin.labelPrompt, item?.label ?? "");
+    if (label == null) return;
+    const note = window.prompt(t.accountAdmin.notePrompt, item?.note ?? "");
+    if (note == null) return;
+    const rawPriority = window.prompt(t.accountAdmin.priorityPrompt, String(item?.priority ?? 100));
+    if (rawPriority == null) return;
+    const priority = Number.parseInt(rawPriority, 10);
+    if (!Number.isInteger(priority)) return;
+    setAddError("");
+    try {
+      applyAccount(await updateManagedAccount(id, { label, note, priority }));
+    } catch (error) {
+      setAddError(messageOf(error));
+    }
+  };
+
+  const editProxy = async (id: string) => {
+    const item = roster.find((entry) => entry.id === id);
+    const current = item?.proxy?.configured ? `${item.proxy.scheme}://${item.proxy.host}` : "";
+    const url = window.prompt(t.accountAdmin.proxyPrompt, current);
+    if (url == null) return;
+    setAddError("");
+    try {
+      if (!url.trim()) {
+        applyAccount(await setManagedAccountProxy(id, null));
+        return;
+      }
+      const username = window.prompt(t.settings.proxyUser, "") ?? "";
+      const password = window.prompt(t.settings.proxyPassword, "") ?? "";
+      applyAccount(
+        await setManagedAccountProxy(id, {
+          url: url.trim(),
+          ...(username ? { username } : {}),
+          ...(password ? { password } : {}),
+        }),
+      );
+    } catch (error) {
+      setAddError(messageOf(error));
+    }
+  };
+
+  const setAccountDisabled = async (id: string, disabled: boolean) => {
+    setAddError("");
+    try {
+      applyAccount(await updateManagedAccount(id, { disabled }));
+    } catch (error) {
+      setAddError(messageOf(error));
+    }
+  };
+
+  const verifyAccount = async (id: string) => {
+    setAddError("");
+    patchRoster(id, { testState: "testing" });
+    try {
+      const result = await verifyManagedAccount(id);
+      applyAccount(result.account);
+      patchRoster(id, {
+        account: result.detail,
+        testState: result.usable ? "pass" : "fail",
+        testError: result.usable ? undefined : result.account.last_error?.reason,
+      });
+    } catch (error) {
+      patchRoster(id, { testState: "fail", testError: messageOf(error) });
+    }
+  };
+
+  const runBatch = async (input: {
+    ids: string[];
+    action: "enable" | "disable" | "delete" | "priority";
+    priority?: number;
+  }) => {
+    setAddError("");
+    try {
+      const results = await batchManagedAccounts(input);
+      const failures = results.filter((result) => !result.ok);
+      if (failures.length > 0) {
+        setAddError(`${failures.length} / ${results.length} failed`);
+      }
+      // The batch may have deleted or changed many rows; refetch for truth.
+      await loadAccounts();
+    } catch (error) {
+      setAddError(messageOf(error));
+    }
+  };
+
   const setAccountProfile = async (id: string, profile: "sdk" | "sand") => {
     setProfileError("");
     try {
@@ -625,11 +822,13 @@ export function App() {
           accounts={t.navAccounts}
           connect={t.navStart}
           playground={t.navPlay}
+          settings={t.navSettings}
           homeMeta={t.navHomeMeta}
           quotaMeta={t.navQuotaMeta}
           accountsMeta={t.navAccountsMeta}
           startMeta={t.navStartMeta}
           playMeta={t.navPlayMeta}
+          settingsMeta={t.navSettingsMeta}
           accountCount={roster.length}
           icons={{
             home: <NavIcon name="home" />,
@@ -682,6 +881,7 @@ export function App() {
         {route.page === "accounts" ? (
           <AccountsPage
             t={homeCopy}
+            admin={t.accountAdmin}
             draftKey={draftKey}
             addError={addError}
             adding={adding}
@@ -690,6 +890,11 @@ export function App() {
             onAdd={() => void addAccount()}
             onTest={(id) => void testAccount(id)}
             onRemove={(id) => void removeAccount(id)}
+            onEdit={(id) => void editAccount(id)}
+            onProxy={(id) => void editProxy(id)}
+            onVerify={(id) => void verifyAccount(id)}
+            onDisable={(id, disabled) => void setAccountDisabled(id, disabled)}
+            onBatch={(input) => void runBatch(input)}
           />
         ) : null}
         {route.page === "account" ? (
@@ -727,6 +932,7 @@ export function App() {
         {route.page === "connect" ? (
           <ConnectPage t={t.connect} origin={origin} copied={copied} recipe={recipe} snippets={snippets} routes={clientRoutes} onCopy={copyValue} onRecipe={setRecipe} />
         ) : null}
+        {route.page === "settings" ? <SettingsPage t={t.settings} /> : null}
       </main>
       <footer className="foot">
         <span>BF Labs · MIT · {protocolSummary}</span>
@@ -742,6 +948,7 @@ function pageLabelFor(page: Route["page"], t: (typeof COPY)["en"] | (typeof COPY
   if (page === "accounts" || page === "account") return t.navAccounts;
   if (page === "quota") return t.navQuota;
   if (page === "playground") return t.navPlay;
+  if (page === "settings") return t.navSettings;
   return t.navHome;
 }
 

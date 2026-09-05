@@ -11,11 +11,13 @@ export function RailNav({
   accounts,
   connect,
   playground,
+  settings,
   homeMeta,
   quotaMeta,
   accountsMeta,
   startMeta,
   playMeta,
+  settingsMeta,
   accountCount,
   icons,
 }: {
@@ -27,11 +29,13 @@ export function RailNav({
   accounts: string;
   connect: string;
   playground: string;
+  settings: string;
   homeMeta: string;
   quotaMeta: string;
   accountsMeta: string;
   startMeta: string;
   playMeta: string;
+  settingsMeta: string;
   accountCount: number;
   icons: Record<"home" | "quota" | "key" | "start" | "play", ReactNode>;
 }) {
@@ -83,6 +87,7 @@ export function RailNav({
           <a href={hrefFor("accounts")} title={accountsMeta} aria-current={current === "accounts" ? "page" : undefined}>{icons.key}{accounts}<small>{accountCount}</small></a>
           <a href={hrefFor("connect")} title={startMeta} aria-current={current === "connect" ? "page" : undefined}>{icons.start}{connect}</a>
           <a href={hrefFor("playground")} title={playMeta} aria-current={current === "playground" ? "page" : undefined}>{icons.play}{playground}</a>
+          <a href={hrefFor("settings")} title={settingsMeta} aria-current={current === "settings" ? "page" : undefined}>{icons.home}{settings}</a>
         </div>
       </div>
     </nav>

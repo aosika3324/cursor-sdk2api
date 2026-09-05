@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- Add a runtime settings layer at `$STATE_DIR/config.json`. Environment variables seed it once; after that the file is authoritative, so a console change is not reverted by a stale compose env on restart. Settings are classified `hot`, `new_sessions`, or `restart`, and restart-only values are served read-only instead of pretending to be editable. Writes are atomic with a rolling backup; out-of-range stored values clamp rather than blocking startup, while corrupt JSON or a wrong version still fails closed.
+- Add `GET/PUT /v0/management/settings` and `GET /v0/management/settings/schema`. The schema endpoint carries field metadata so the console renders new settings without a frontend change.
+- Accounts gain `label`, `disabled`, `priority`, `proxy`, `note`, and `last_error`, with in-place v1 to v2 migration. Pool selection now skips disabled accounts and prefers the best priority tier before falling back. Downgrading after a write is not supported, since v1 readers reject v2 records.
+- Add per-account outbound proxy alongside the existing global proxy. Scoping uses `AsyncLocalStorage` over Node's global http/https agents plus a matching undici dispatcher, which covers both SDK network paths (Agent runs and `models.list` / Dashboard usage) without patching `@cursor/sdk`. Opt-in via `perAccountProxyEnabled` and off by default because it mutates a Node builtin; while disabled nothing is patched.
+- Accept SOCKS5 (`socks5`, `socks5h`, `socks4`) proxies on both network paths. PAC stays rejected because it cannot fail closed. Proxy credentials are never returned to the browser: reads expose only scheme, host, and `has_password`.
+- Add `PUT /v0/management/accounts/update`, `PUT /v0/management/accounts/proxy`, `POST /v0/management/accounts/batch`, and `POST /v0/management/accounts/verify`. Batch operations return per-item results instead of rolling back the whole request.
+- Operator Console adds a System settings page and extends Accounts with multi-select, batch enable/disable/delete/priority, inline label, note, priority, and proxy editing, plus a real credential probe. The previous "test" button only proved reachability; `verify` reports whether Cursor accepts the key.
+- Ship `package.json` in the runtime image. `dist/config.js` requires it at module load and it declares `"type": "module"`, so every previously built image crashed on startup with `MODULE_NOT_FOUND` before binding a port. CI ran `docker build` but never `docker run`, so the image built green while being unable to start.
+- Document `DEFAULT_RUNTIME_PROFILE`, `ALLOW_REQUEST_RUNTIME_PROFILE`, `HOSTED_SEARCH_MODE`, `ORDINARY_TURN_COORDINATOR`, `RUNTIME_LEDGER_V2`, and `GATEWAY_VERSION` in `.env.example`.
+
 ## 0.4.0
 
 - Fix GitHub Issue #25: Anthropic SSE in-stream errors now close open blocks, emit `message_delta` + `message_stop`, then one public `error`, without a second handler write.

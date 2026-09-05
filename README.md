@@ -117,11 +117,29 @@ Client tools are converted to SDK `local.customTools` through MCP. The model cho
 
 ## Operations
 
-- `/console/`: local operator console
+- `/console/`: local operator console, including a System settings page
 - `/v1/models`: live Cursor model catalog
 - `/v1/account`: pooled Cursor identities and current Dashboard usage in managed mode
 - `/health`: capabilities, SDK version, default/sdk/sand profile readiness, and proxy transport mode
-- `STATE_DIR`: account, SDK store, and resume state
+- `STATE_DIR`: account, SDK store, resume state, and `config.json`
+
+### Runtime settings
+
+Most configuration is editable at runtime from `/console/`. Environment variables
+seed `$STATE_DIR/config.json` on first start; after that the file wins, so a
+console change survives a restart. Each field is labeled by how it takes effect:
+
+- **Applies immediately**: log level, concurrency limits, TTLs, hosted search, per-account proxy toggle.
+- **Applies to new sessions**: runtime profile and global proxy. A live Cursor Agent keeps the values it was created with.
+- **Requires a restart**: `RUNTIME_LEDGER_V2`, `HOST`, `PORT`, `STATE_DIR`. Shown read-only.
+
+### Proxies
+
+A global proxy applies to every account. Enabling `perAccountProxyEnabled` also
+allows one proxy per account, which takes precedence over the global one; an
+account without its own proxy still uses the global default. `http`, `https`, and
+`socks5` are accepted on both SDK network paths. PAC is rejected. Stored proxy
+credentials are never returned to the browser.
 
 Managed mode follows CPA's split between client keys and upstream credentials: clients receive only `GATEWAY_ACCESS_KEY`; imported Cursor keys stay in the gateway account store. New sessions use model-aware round-robin. Continuations stay pinned when the original account is healthy; before semantic output, one alternate managed account may be tried. If the original account/session is gone, an exact full transcript can cold-branch safely. BYOK remains available for a trusted single-user sidecar.
 
@@ -129,7 +147,7 @@ Managed mode follows CPA's split between client keys and upstream credentials: c
 
 ## Verification
 
-The deterministic suite contains 189 tests. The latest redacted receipt proves persisted and full-transcript recovery on Sonnet 4.6 and Grok 4.6 xhigh: [recovery live smoke](docs/evidence/2026-08-19-beefapi-sync-live-smoke.md). The earlier four-model receipt also covers Fable 5 and Composer 2.5: [four-model evidence](docs/evidence/2026-08-15-live-smoke.md).
+The deterministic suite contains 359 tests. The latest redacted receipt proves persisted and full-transcript recovery on Sonnet 4.6 and Grok 4.6 xhigh: [recovery live smoke](docs/evidence/2026-08-19-beefapi-sync-live-smoke.md). The earlier four-model receipt also covers Fable 5 and Composer 2.5: [four-model evidence](docs/evidence/2026-08-15-live-smoke.md).
 
 ```bash
 npm run typecheck
