@@ -24,6 +24,12 @@ describe("session token detection", () => {
     expect(looksLikeSessionToken("crsr_abc123")).toBe(false);
     expect(looksLikeSessionToken("user_x::not-a-jwt")).toBe(false);
   });
+
+  it("accepts a URL-encoded token where :: became %3A%3A", () => {
+    const encoded = sessionToken().replace("::", "%3A%3A");
+    expect(encoded).not.toContain("::");
+    expect(looksLikeSessionToken(encoded)).toBe(true);
+  });
 });
 
 describe("onboardCursorAccount", () => {

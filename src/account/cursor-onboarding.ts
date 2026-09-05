@@ -41,11 +41,28 @@ export class OnboardingError extends Error {
 }
 
 /**
+ * Session tokens are often copied URL-encoded (the `::` shows up as `%3A%3A`
+ * from an address bar or cookie panel). Normalize before validating or using.
+ */
+export function normalizeSessionToken(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.includes("::")) return trimmed;
+  if (/%3a%3a/i.test(trimmed)) {
+    try {
+      return decodeURIComponent(trimmed);
+    } catch {
+      return trimmed;
+    }
+  }
+  return trimmed;
+}
+
+/**
  * A session token looks like `user_...::<jwt>`. We validate the shape and that
  * the JWT self-declares `type: session` before spending a network round trip.
  */
 export function looksLikeSessionToken(value: string): boolean {
-  const trimmed = value.trim();
+  const trimmed = normalizeSessionToken(value);
   if (!trimmed.includes("::")) return false;
   const [, jwt] = trimmed.split("::", 2);
   const parts = jwt?.split(".") ?? [];
@@ -132,7 +149,7 @@ export interface OnboardingOptions {
  * must not be persisted by the caller.
  */
 export async function onboardCursorAccount(options: OnboardingOptions): Promise<OnboardingResult> {
-  const sessionToken = options.sessionToken.trim();
+  const sessionToken = normalizeSessionToken(options.sessionToken);
   if (!looksLikeSessionToken(sessionToken)) {
     throw new OnboardingError("invalid_session_token_format");
   }
