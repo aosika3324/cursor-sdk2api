@@ -26,6 +26,16 @@ export interface AccountAdminCopy {
   priorityPrompt: string;
   proxyPrompt: string;
   proxyClearHint: string;
+  quota: string;
+  moveUp: string;
+  moveDown: string;
+  available: string;
+  botWithQuota: string;
+  botFull: string;
+  botOff: string;
+  planPercent: string;
+  badgeFableOn: string;
+  badgeFableOff: string;
 }
 
 export function AccountsPage({
@@ -44,6 +54,8 @@ export function AccountsPage({
   onVerify,
   onDisable,
   onBatch,
+  onMove,
+  onQuota,
 }: {
   t: HomeCopy & { add: string; adding: string; keyPlaceholder: string; keyHelp: string; remove: string };
   admin: AccountAdminCopy;
@@ -64,6 +76,8 @@ export function AccountsPage({
     action: "enable" | "disable" | "delete" | "priority";
     priority?: number;
   }) => void;
+  onMove: (id: string, direction: "up" | "down") => void;
+  onQuota: (id: string) => void;
 }) {
   const passed = roster.filter((item) => item.testState === "pass").length;
   const failed = roster.filter((item) => item.testState === "fail").length;
@@ -174,6 +188,8 @@ export function AccountsPage({
             onProxy,
             onVerify,
             onDisable,
+            onMove,
+            onQuota,
             labels: {
               edit: admin.edit,
               proxy: admin.proxy,
@@ -183,6 +199,18 @@ export function AccountsPage({
               disabledTag: admin.disabledTag,
               priority: admin.priority,
               proxyDirect: admin.proxyDirect,
+              quota: admin.quota,
+              moveUp: admin.moveUp,
+              moveDown: admin.moveDown,
+              available: admin.available,
+              badges: {
+                botWithQuota: admin.botWithQuota,
+                botFull: admin.botFull,
+                botOff: admin.botOff,
+                planPercent: admin.planPercent,
+                fableOn: admin.badgeFableOn,
+                fableOff: admin.badgeFableOff,
+              },
             },
           }}
         />

@@ -1,4 +1,5 @@
 import { Button } from "../bflabs/Button";
+import { accountBadges } from "../badges";
 import { catalogHasFable5 } from "../fable5";
 import { hrefFor } from "../nav";
 import { formatGrokBotQuota, formatQuota, formatQuotaBreakdown } from "../quota";
@@ -13,6 +14,8 @@ export interface AccountTableExtras {
   onProxy: (id: string) => void;
   onVerify: (id: string) => void;
   onDisable: (id: string, disabled: boolean) => void;
+  onMove: (id: string, direction: "up" | "down") => void;
+  onQuota: (id: string) => void;
   labels: {
     edit: string;
     proxy: string;
@@ -22,6 +25,18 @@ export interface AccountTableExtras {
     disabledTag: string;
     priority: string;
     proxyDirect: string;
+    quota: string;
+    moveUp: string;
+    moveDown: string;
+    available: string;
+    badges: {
+      botWithQuota: string;
+      botFull: string;
+      botOff: string;
+      planPercent: string;
+      fableOn: string;
+      fableOff: string;
+    };
   };
 }
 
@@ -78,16 +93,19 @@ export function AccountTable({
                 />
               </th>
             ) : null}
+            {extras ? <th className="col-index">#</th> : null}
+            {extras ? <th className="col-order"></th> : null}
             {headers.map((label) => <th key={label}>{label}</th>)}
             <th></th>
           </tr>
         </thead>
         <tbody>
-          {items.map((item) => {
+          {items.map((item, rowIndex) => {
             const quota = formatQuota(item.account);
             const quotaBreakdown = formatQuotaBreakdown(item.account);
             const grokQuota = formatGrokBotQuota(item.account);
             const fable = item.models ? (catalogHasFable5(item.models) ? fableOn : fableOff) : fableUnknown;
+            const badges = extras ? accountBadges(item.account, item.models, extras.labels.badges) : [];
             const probe =
               item.testState === "testing"
                 ? testing
@@ -108,14 +126,50 @@ export function AccountTable({
                     />
                   </td>
                 ) : null}
+                {extras ? <td className="col-index">{rowIndex + 1}</td> : null}
+                {extras ? (
+                  <td className="col-order">
+                    <div className="order-stack">
+                      <button
+                        type="button"
+                        aria-label={extras.labels.moveUp}
+                        title={extras.labels.moveUp}
+                        disabled={rowIndex === 0}
+                        onClick={() => extras.onMove(item.id, "up")}
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={extras.labels.moveDown}
+                        title={extras.labels.moveDown}
+                        disabled={rowIndex === items.length - 1}
+                        onClick={() => extras.onMove(item.id, "down")}
+                      >
+                        ↓
+                      </button>
+                    </div>
+                  </td>
+                ) : null}
                 <td>
                   <a className="row-link" href={hrefFor("account", item.id)}>
                     <strong>{item.label || identityLabel(item.account, item.keyHint)}</strong>
                     <span className="sub">{item.account?.identity?.api_key_name || item.keyHint}</span>
                   </a>
+                  {badges.length > 0 ? (
+                    <span className="badge-row">
+                      {badges.map((badge) => (
+                        <em key={`${badge.kind}-${badge.text}`} className={`badge badge--${badge.tone}`}>
+                          {badge.text}
+                        </em>
+                      ))}
+                    </span>
+                  ) : null}
                   {extras ? (
                     <span className="sub row-meta">
-                      {item.disabled ? <em className="tag-off">{extras.labels.disabledTag}</em> : null}
+                      <em className={item.disabled ? "tag-off" : "tag-on"}>
+                        {item.disabled ? extras.labels.disabledTag : extras.labels.available}
+                      </em>
                       <span>{extras.labels.priority} {item.priority ?? 100}</span>
                       <span>
                         {item.proxy?.configured
@@ -140,6 +194,9 @@ export function AccountTable({
                     </Button>
                     {extras ? (
                       <>
+                        <Button variant="secondary" size="sm" onClick={() => extras.onQuota(item.id)}>
+                          {extras.labels.quota}
+                        </Button>
                         <Button variant="secondary" size="sm" onClick={() => extras.onVerify(item.id)}>
                           {extras.labels.verify}
                         </Button>

@@ -6,6 +6,7 @@ import { AccountDetailPage } from "./pages/AccountDetailPage";
 import { AccountsPage } from "./pages/AccountsPage";
 import { ConnectPage } from "./pages/ConnectPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { QuotaDetail } from "./pages/QuotaDetail";
 import type { RecipeName } from "./recipes";
 import { HomePage, type HomeCopy } from "./pages/HomePage";
 import { PlaygroundPage } from "./pages/PlaygroundPage";
@@ -216,6 +217,34 @@ const COPY = {
       priorityPrompt: "Priority (0-1000, lower is preferred)",
       proxyPrompt: "Proxy URL (http, https, or socks5). Leave empty to clear.",
       proxyClearHint: "Empty clears the proxy.",
+      quota: "Quota",
+      moveUp: "Raise priority",
+      moveDown: "Lower priority",
+      available: "Available",
+      botWithQuota: "Bot (quota left)",
+      botFull: "Bot (plan full)",
+      botOff: "Bot off",
+      planPercent: "Plan {p}%",
+      badgeFableOn: "F5",
+      badgeFableOff: "F5 ×",
+    },
+    quotaDetail: {
+      title: "Quota",
+      close: "Close",
+      botChannel: "Bot channel",
+      botAvailable: "available",
+      botUnavailable: "unavailable",
+      grokBotPlan: "Grok Bot Plan",
+      cursorModels: "Cursor Models (Grok/Composer)",
+      otherModels: "Other Models (Claude/GPT/Gemini)",
+      autoModels: "Auto Models",
+      totalUsage: "Total usage",
+      periodSpend: "This period",
+      included: "included",
+      resetPrefix: "Resets",
+      unavailable: "Cursor returned no usage for this key.",
+      byModel: "Spend by model",
+      byModelPending: "Cursor's per-model breakdown is not wired up yet.",
     },
     keyNeeded: "Paste a Cursor API key first.",
     settings: {
@@ -436,6 +465,34 @@ const COPY = {
       priorityPrompt: "优先级（0-1000，越小越优先）",
       proxyPrompt: "代理地址（http / https / socks5）。留空则清除。",
       proxyClearHint: "留空即清除代理。",
+      quota: "额度",
+      moveUp: "上调优先级",
+      moveDown: "下调优先级",
+      available: "可用",
+      botWithQuota: "Bot(有额度)",
+      botFull: "Bot(套餐已满)",
+      botOff: "Bot 未开",
+      planPercent: "套餐 {p}%",
+      badgeFableOn: "F5",
+      badgeFableOff: "F5 ×",
+    },
+    quotaDetail: {
+      title: "额度",
+      close: "关闭",
+      botChannel: "Bot 通道",
+      botAvailable: "可用",
+      botUnavailable: "不可用",
+      grokBotPlan: "Grok Bot Plan",
+      cursorModels: "Cursor Models（Grok/Composer）",
+      otherModels: "Other Models（Claude/GPT/Gemini）",
+      autoModels: "Auto 额度",
+      totalUsage: "总用量",
+      periodSpend: "本周期消费",
+      included: "含额",
+      resetPrefix: "重置",
+      unavailable: "Cursor 未返回该 Key 的用量。",
+      byModel: "按模型消费",
+      byModelPending: "Cursor 的按模型明细尚未接入。",
     },
     keyNeeded: "先粘贴一把 Cursor Key。",
     settings: {
@@ -488,6 +545,7 @@ export function App() {
   const [runState, setRunState] = useState<LoadState>("idle");
   const [recipe, setRecipe] = useState<RecipeName>("claude");
   const [copied, setCopied] = useState("");
+  const [quotaFor, setQuotaFor] = useState("");
   const t = COPY[language];
   const origin = window.location.origin;
   const active = roster.find((item) => item.id === activeId);
@@ -713,8 +771,41 @@ export function App() {
     }
   };
 
-  const setAccountDisabled = async (id: string, disabled: boolean) => {
+  const moveAccount = async (id: string, direction: "up" | "down") => {
+    // The table is ordered by priority, so swapping with the neighbour's
+    // priority is what "move up/down" means. Equal priorities are spread first
+    // so a swap has something to exchange.
+    const ordered = [...roster].sort(
+      (left, right) => (left.priority ?? 100) - (right.priority ?? 100) || left.addedAt - right.addedAt,
+    );
+    const index = ordered.findIndex((item) => item.id === id);
+    const target = direction === "up" ? index - 1 : index + 1;
+    if (index < 0 || target < 0 || target >= ordered.length) return;
     setAddError("");
+    try {
+      const self = ordered[index]!;
+      const other = ordered[target]!;
+      const selfPriority = self.priority ?? 100;
+      const otherPriority = other.priority ?? 100;
+      if (selfPriority === otherPriority) {
+        // Same tier: nudge this row past the neighbour instead of a no-op swap.
+        const shifted = direction === "up" ? selfPriority - 1 : selfPriority + 1;
+        const clamped = Math.min(1000, Math.max(0, shifted));
+        applyAccount(await updateManagedAccount(id, { priority: clamped }));
+        return;
+      }
+      const [first, second] = await Promise.all([
+        updateManagedAccount(self.id, { priority: otherPriority }),
+        updateManagedAccount(other.id, { priority: selfPriority }),
+      ]);
+      applyAccount(first);
+      applyAccount(second);
+    } catch (error) {
+      setAddError(messageOf(error));
+    }
+  };
+
+  const setAccountDisabled = async (id: string, disabled: boolean) => {    setAddError("");
     try {
       applyAccount(await updateManagedAccount(id, { disabled }));
     } catch (error) {
@@ -742,8 +833,7 @@ export function App() {
     ids: string[];
     action: "enable" | "disable" | "delete" | "priority";
     priority?: number;
-  }) => {
-    setAddError("");
+  }) => {    setAddError("");
     try {
       const results = await batchManagedAccounts(input);
       const failures = results.filter((result) => !result.ok);
@@ -895,6 +985,8 @@ export function App() {
             onVerify={(id) => void verifyAccount(id)}
             onDisable={(id, disabled) => void setAccountDisabled(id, disabled)}
             onBatch={(input) => void runBatch(input)}
+            onMove={(id, direction) => void moveAccount(id, direction)}
+            onQuota={setQuotaFor}
           />
         ) : null}
         {route.page === "account" ? (
@@ -934,6 +1026,14 @@ export function App() {
         ) : null}
         {route.page === "settings" ? <SettingsPage t={t.settings} /> : null}
       </main>
+      {quotaFor ? (
+        <QuotaDetail
+          t={t.quotaDetail}
+          account={roster.find((item) => item.id === quotaFor)?.account}
+          keyHint={roster.find((item) => item.id === quotaFor)?.keyHint ?? ""}
+          onClose={() => setQuotaFor("")}
+        />
+      ) : null}
       <footer className="foot">
         <span>BF Labs · MIT · {protocolSummary}</span>
         <span className="foot-origin mono">{origin}</span>

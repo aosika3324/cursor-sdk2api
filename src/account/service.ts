@@ -30,6 +30,9 @@ function mapGrokBot(result: CursorSandResult): Record<string, unknown> {
       current_period_start: result.currentPeriodStart,
       access_state: result.accessState,
       has_available_usage: result.hasAvailableUsage,
+      // Cursor's own limit message, e.g. "You've hit your usage limit". Surfaced
+      // so the console can show it verbatim instead of inferring from percentages.
+      block_reason: result.blockReason,
     });
   }
   return compactRecord({
