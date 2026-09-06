@@ -11,10 +11,23 @@ afterEach(async () => {
   ctx = undefined;
 });
 
+async function consoleCookie(context: TestContext): Promise<string> {
+  const login = await fetch(`${context.url}/v0/management/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ access_key: "gateway-key" }),
+  });
+  expect(login.status).toBe(200);
+  const setCookie = login.headers.get("set-cookie") ?? "";
+  const token = /bf_console_session=([^;]*)/.exec(setCookie)?.[1] ?? "";
+  expect(token).toBeTruthy();
+  return `bf_console_session=${token}`;
+}
+
 async function addAccount(context: TestContext, apiKey: string): Promise<string> {
   const response = await fetch(`${context.url}/v0/management/accounts`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", cookie: await consoleCookie(context) },
     body: JSON.stringify({ api_key: apiKey }),
   });
   expect(response.status).toBe(201);

@@ -12,6 +12,12 @@ import { readAccount } from "../account/service.js";
 import { CursorAccountFileStore, type StoredCursorAccount } from "../account/file-store.js";
 import { onboardCursorAccount, OnboardingError, normalizeSessionToken, looksLikeSessionToken } from "../account/cursor-onboarding.js";
 import { probeSandInference } from "../sdk/sand-probe.js";
+import {
+  ConsoleSessionStore,
+  CONSOLE_COOKIE,
+  parseCookie,
+  serializeSessionCookie,
+} from "./console-auth.js";
 import { SettingsStore } from "../core/settings/store.js";
 import { SETTINGS_SCHEMA, settingsEffect } from "../core/settings/schema.js";
 import { parseProxyValue, SettingsValidationError } from "../core/settings/validate.js";
@@ -190,6 +196,7 @@ export function createApp(input: {
   const catalog = new ModelCatalog(sdk, clock, config.catalogCacheMs);
   const accounts = new CursorAccountFileStore(config.stateDir, config.managedCursorKey);
   const accountPool = new CursorAccountPool();
+  const consoleSessions = new ConsoleSessionStore();
   const settings = new SettingsStore(config.stateDir, {
     logLevel: config.logLevel,
     hostedSearchMode: config.runtimePolicy.hostedSearchMode,
@@ -490,6 +497,57 @@ export function createApp(input: {
           requestId,
         );
         return;
+      }
+
+      if (path === "/v0/management/auth/login" && method === "POST") {
+        const body = (await readJsonBody(req, config.maxBodyBytes)) as
+          | { access_key?: unknown }
+          | undefined;
+        if (config.authMode !== "managed") {
+          sendJson(res, 501, { error: "console auth unavailable in byok mode" }, requestId);
+          return;
+        }
+        const accessKey = typeof body?.access_key === "string" ? body.access_key : "";
+        if (accessKey === config.gatewayAccessKey) {
+          const token = consoleSessions.create();
+          res.setHeader(
+            "Set-Cookie",
+            serializeSessionCookie(token, {
+              secure: headerValue(req, "x-forwarded-proto") === "https",
+            }),
+          );
+          sendJson(res, 200, { ok: true }, requestId);
+          return;
+        }
+        sendJson(res, 401, { error: "invalid access key" }, requestId);
+        return;
+      }
+
+      if (path === "/v0/management/auth/logout" && method === "POST") {
+        const token = parseCookie(headerValue(req, "cookie"), CONSOLE_COOKIE);
+        if (token) consoleSessions.destroy(token);
+        res.setHeader("Set-Cookie", serializeSessionCookie("", { secure: false, maxAge: 0 }));
+        sendJson(res, 200, { ok: true }, requestId);
+        return;
+      }
+
+      if (path === "/v0/management/auth/session" && method === "GET") {
+        const token = parseCookie(headerValue(req, "cookie"), CONSOLE_COOKIE);
+        sendJson(
+          res,
+          200,
+          { authenticated: !!token && consoleSessions.validate(token) },
+          requestId,
+        );
+        return;
+      }
+
+      if (path.startsWith("/v0/management/") && config.authMode === "managed") {
+        const token = parseCookie(headerValue(req, "cookie"), CONSOLE_COOKIE);
+        if (!token || !consoleSessions.validate(token)) {
+          sendJson(res, 401, { error: "unauthorized" }, requestId);
+          return;
+        }
       }
 
       if (path === "/v0/management/accounts/probe" && method === "GET") {
