@@ -765,6 +765,9 @@ Modal 用 B1 表单原语编辑：label(`Input`)、note(`Textarea`)、priority(`
 
 ## 阶段 H：收尾
 
+### 跟踪项（实现中发现，后续处理）
+- **markUnauthorized 未接线**：`useAuth` 暴露了 `markUnauthorized()` 但未接到 useRoster/useHealth/useSettings 的 mid-session 401 catch。cookie 中途过期时会显示错误串而非跳回登录页。应在一个集中拦截点(如 managementJson/settingsJson 的调用层)统一处理 `UnauthorizedError` → `markUnauthorized()`，而非在 4 个 hook 里散落 instanceof。列为 H 阶段或独立 follow-up。
+
 ### Task H1: 全量验证 + 部署文档
 
 - [ ] `npm run build`（server + web）成功；`npx vitest run` 全绿；`npm run typecheck`。
