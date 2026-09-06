@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  decodeConnectEnvelopes,
   decodeInferenceFrame,
+  encodeConnectEnvelope,
   encodeInferenceRequest,
   ROLE_ASSISTANT,
   ROLE_SYSTEM,
@@ -151,5 +153,39 @@ describe("sand response decoding", () => {
   it("ignores unknown fields without throwing", () => {
     const buf = Uint8Array.from([...encVarint((5 << 3) | 0), 42, ...frame(1, strField(1, "keep"))]);
     expect(decodeInferenceFrame(buf)).toEqual({ text: "keep" });
+  });
+});
+
+describe("connect envelope framing", () => {
+  it("round-trips a single data frame", () => {
+    const payload = Uint8Array.from([1, 2, 3, 4, 5]);
+    const framed = encodeConnectEnvelope(payload);
+    const out = decodeConnectEnvelopes(framed);
+    expect(out).toHaveLength(1);
+    expect(out[0]!.flag).toBe(0);
+    expect([...out[0]!.payload]).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  it("splits multiple concatenated frames and preserves flags", () => {
+    const a = encodeConnectEnvelope(Uint8Array.from([10]), 0);
+    const b = encodeConnectEnvelope(Uint8Array.from([20, 21]), 2);
+    const both = Uint8Array.from([...a, ...b]);
+    const out = decodeConnectEnvelopes(both);
+    expect(out.map((f) => f.flag)).toEqual([0, 2]);
+    expect([...out[1]!.payload]).toEqual([20, 21]);
+  });
+
+  it("stops cleanly on a truncated trailing frame", () => {
+    const good = encodeConnectEnvelope(Uint8Array.from([9, 9]));
+    const truncated = Uint8Array.from([...good, 0, 0, 0, 0, 99]); // claims len 99, no data
+    const out = decodeConnectEnvelopes(truncated);
+    expect(out).toHaveLength(1);
+    expect([...out[0]!.payload]).toEqual([9, 9]);
+  });
+
+  it("encodes a big-endian length prefix", () => {
+    const framed = encodeConnectEnvelope(new Uint8Array(300));
+    // 300 = 0x012C -> bytes [0,0,1,44]
+    expect([framed[1], framed[2], framed[3], framed[4]]).toEqual([0, 0, 1, 44]);
   });
 });

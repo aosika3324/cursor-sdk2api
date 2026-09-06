@@ -210,3 +210,33 @@ export function decodeInferenceFrame(buf: Uint8Array): InferenceDelta {
   }
   return out;
 }
+
+// --- connect streaming envelope (5-byte prefix: 1 flag byte + 4-byte big-endian length) ---
+
+/** Wrap a message in one Connect stream envelope. flag 0 = data, 2 = end-of-stream. */
+export function encodeConnectEnvelope(payload: Uint8Array, flag = 0): Uint8Array {
+  const header = new Uint8Array(5);
+  header[0] = flag;
+  const len = payload.length;
+  header[1] = (len >>> 24) & 0xff;
+  header[2] = (len >>> 16) & 0xff;
+  header[3] = (len >>> 8) & 0xff;
+  header[4] = len & 0xff;
+  return cat([header, payload]);
+}
+
+/** Split a Connect stream body into { flag, payload } frames. */
+export function decodeConnectEnvelopes(buf: Uint8Array): Array<{ flag: number; payload: Uint8Array }> {
+  const frames: Array<{ flag: number; payload: Uint8Array }> = [];
+  let i = 0;
+  while (i + 5 <= buf.length) {
+    const flag = buf[i]!;
+    const len = (buf[i + 1]! << 24) | (buf[i + 2]! << 16) | (buf[i + 3]! << 8) | buf[i + 4]!;
+    const start = i + 5;
+    const end = start + len;
+    if (end > buf.length) break;
+    frames.push({ flag, payload: buf.subarray(start, end) });
+    i = end;
+  }
+  return frames;
+}

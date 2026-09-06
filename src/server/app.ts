@@ -10,7 +10,8 @@ import {
 import { fetchCursorSandQuota } from "../account/cursor-dashboard.js";
 import { readAccount } from "../account/service.js";
 import { CursorAccountFileStore, type StoredCursorAccount } from "../account/file-store.js";
-import { onboardCursorAccount, OnboardingError } from "../account/cursor-onboarding.js";
+import { onboardCursorAccount, OnboardingError, normalizeSessionToken, looksLikeSessionToken } from "../account/cursor-onboarding.js";
+import { probeSandInference } from "../sdk/sand-probe.js";
 import { SettingsStore } from "../core/settings/store.js";
 import { SETTINGS_SCHEMA, settingsEffect } from "../core/settings/schema.js";
 import { parseProxyValue, SettingsValidationError } from "../core/settings/validate.js";
@@ -629,6 +630,21 @@ export function createApp(input: {
           }
           return;
         }
+      }
+
+      if (path === "/v0/management/sand/probe" && method === "POST") {
+        const body = await readJsonBody(req, config.maxBodyBytes) as Record<string, unknown> | undefined;
+        const rawToken = typeof body?.session_token === "string" ? body.session_token.trim() : "";
+        const prompt = typeof body?.prompt === "string" ? body.prompt : "say sand-probe-ok";
+        if (!rawToken) throw invalidRequest("session_token is required");
+        const token = normalizeSessionToken(rawToken);
+        if (!looksLikeSessionToken(token)) throw invalidRequest("session_token is not a valid session token");
+        // Sand auth uses the session-token JWT (a crsr_ key is rejected with
+        // ERROR_NOT_LOGGED_IN). Direct HTTP to InferenceService, bypassing the SDK.
+        const jwt = token.split("::", 2)[1] ?? token;
+        const result = await probeSandInference({ apiKey: jwt, prompt });
+        sendJson(res, 200, { probe: result }, requestId);
+        return;
       }
 
       if (path === "/v0/management/accounts/onboard" && method === "POST") {
