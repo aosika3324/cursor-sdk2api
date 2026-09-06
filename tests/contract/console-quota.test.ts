@@ -63,7 +63,9 @@ test("quota pair stacks at 390px without a wider min-width", () => {
 });
 
 test("console copy names Cursor quota and Grok Bot quota without internal terms", () => {
-  const app = readFileSync(join(repoRoot, "web/src/App.tsx"), "utf8");
+  // COPY was extracted out of App.tsx into the i18n context during the
+  // console-overhaul refactor; assert against its new home.
+  const app = readFileSync(join(repoRoot, "web/src/state/I18nContext.tsx"), "utf8");
   expect(app).toContain("Cursor quota");
   expect(app).toContain("Grok Bot quota");
   expect(app).toContain("Cursor 额度");
