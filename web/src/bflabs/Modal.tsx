@@ -9,15 +9,24 @@ export type ModalProps = {
   children?: ReactNode;
   footer?: ReactNode;
   className?: string;
+  /**
+   * When false, Escape / backdrop / close-button dismissal is suppressed. Use
+   * this to block dismissal during an in-flight save. Defaults to true.
+   */
+  dismissible?: boolean;
 };
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-export function Modal({ open, onClose, title, children, footer, className }: ModalProps) {
+export function Modal({ open, onClose, title, children, footer, className, dismissible = true }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
   const titleId = useId();
+
+  const requestClose = useCallback(() => {
+    if (dismissible) onClose();
+  }, [dismissible, onClose]);
 
   const getFocusable = useCallback(
     () => Array.from(panelRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []),
@@ -51,7 +60,7 @@ export function Modal({ open, onClose, title, children, footer, className }: Mod
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.stopPropagation();
-        onClose();
+        requestClose();
         return;
       }
       if (event.key !== "Tab") return;
@@ -74,7 +83,7 @@ export function Modal({ open, onClose, title, children, footer, className }: Mod
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [open, onClose, getFocusable]);
+  }, [open, requestClose, getFocusable]);
 
   if (!open) return null;
 
@@ -83,7 +92,7 @@ export function Modal({ open, onClose, title, children, footer, className }: Mod
       className={cx("bf-modal", className)}
       data-slot="modal"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        if (event.target === event.currentTarget) requestClose();
       }}
     >
       <div className="bf-modal__backdrop" aria-hidden="true" />
@@ -102,7 +111,7 @@ export function Modal({ open, onClose, title, children, footer, className }: Mod
           <button
             type="button"
             className="bf-modal__close"
-            onClick={onClose}
+            onClick={requestClose}
             aria-label="Close dialog"
           >
             <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">

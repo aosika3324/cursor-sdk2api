@@ -1,8 +1,12 @@
 import { useMemo, useState } from "react";
 import { Button } from "../bflabs/Button";
+import { Field } from "../bflabs/Field";
+import { Input } from "../bflabs/Input";
+import { Modal } from "../bflabs/Modal";
 import type { RosterItem } from "../roster";
 import { useI18n } from "../state/I18nContext";
 import { AccountTable } from "./AccountTable";
+import { ConfirmDialog } from "./ConfirmDialog";
 import type { HomeCopy } from "./HomePage";
 import { ActionLink, PageFrame } from "./shared";
 
@@ -22,10 +26,6 @@ export interface AccountAdminCopy {
   batchPriority: string;
   batchConfirmDelete: string;
   clearSelection: string;
-  labelPrompt: string;
-  notePrompt: string;
-  priorityPrompt: string;
-  proxyPrompt: string;
   proxyClearHint: string;
   quota: string;
   moveUp: string;
@@ -97,6 +97,9 @@ export function AccountsPage({
   const [tokenDraft, setTokenDraft] = useState("");
   const [grantF5, setGrantF5] = useState(true);
   const [claimBot, setClaimBot] = useState(true);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [priorityOpen, setPriorityOpen] = useState(false);
+  const [priorityDraft, setPriorityDraft] = useState("100");
 
   // Drop ids that no longer exist so a stale selection cannot act on them.
   const liveSelection = useMemo(
@@ -122,19 +125,33 @@ export function AccountsPage({
   const runBatch = (action: "enable" | "disable" | "delete" | "priority") => {
     const ids = [...liveSelection];
     if (ids.length === 0) return;
-    if (action === "delete" && !window.confirm(admin.batchConfirmDelete.replace("{n}", String(ids.length)))) {
+    if (action === "delete") {
+      setConfirmDelete(true);
       return;
     }
     if (action === "priority") {
-      const raw = window.prompt(admin.priorityPrompt, "100");
-      if (raw == null) return;
-      const priority = Number.parseInt(raw, 10);
-      if (!Number.isInteger(priority)) return;
-      onBatch({ ids, action, priority });
-    } else {
-      onBatch({ ids, action });
+      setPriorityDraft("100");
+      setPriorityOpen(true);
+      return;
     }
+    onBatch({ ids, action });
     setSelected(new Set());
+  };
+
+  const confirmBatchDelete = () => {
+    const ids = [...liveSelection];
+    if (ids.length === 0) return;
+    onBatch({ ids, action: "delete" });
+    setSelected(new Set());
+  };
+
+  const confirmBatchPriority = () => {
+    const ids = [...liveSelection];
+    const priority = Number.parseInt(priorityDraft, 10);
+    if (ids.length === 0 || !Number.isInteger(priority)) return;
+    onBatch({ ids, action: "priority", priority });
+    setSelected(new Set());
+    setPriorityOpen(false);
   };
 
   return (
@@ -290,6 +307,37 @@ export function AccountsPage({
           }}
         />
       )}
+      <ConfirmDialog
+        open={confirmDelete}
+        title={copy.editModal.confirmRemoveTitle}
+        body={admin.batchConfirmDelete.replace("{n}", String(liveSelection.size))}
+        confirmLabel={admin.batchDelete}
+        onConfirm={confirmBatchDelete}
+        onClose={() => setConfirmDelete(false)}
+      />
+      <Modal
+        open={priorityOpen}
+        onClose={() => setPriorityOpen(false)}
+        title={admin.batchPriority}
+        footer={
+          <>
+            <Button variant="quiet" size="sm" onClick={() => setPriorityOpen(false)}>
+              {copy.editModal.cancel}
+            </Button>
+            <Button variant="primary" size="sm" onClick={confirmBatchPriority}>
+              {copy.editModal.save}
+            </Button>
+          </>
+        }
+      >
+        <Field label={admin.priority} hint={copy.editModal.priorityHint}>
+          <Input
+            type="number"
+            value={priorityDraft}
+            onChange={(event) => setPriorityDraft(event.target.value)}
+          />
+        </Field>
+      </Modal>
     </PageFrame>
   );
 }

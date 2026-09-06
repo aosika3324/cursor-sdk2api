@@ -11,16 +11,19 @@ export function AccountDetailPage({
   item,
   onTest,
   onUse,
+  onEdit,
   onProfile,
   profileError,
 }: {
   item?: RosterItem;
   onTest: (id: string) => void;
   onUse: (id: string) => void;
+  onEdit: (id: string) => void;
   onProfile: (id: string, profile: "sdk" | "sand") => void;
   profileError?: string;
 }) {
   const t = useI18n().t.detail;
+  const editLabel = useI18n().t.accountAdmin.edit;
   if (!item) {
     return (
       <PageFrame title={t.missing} actions={<ActionLink href={hrefFor("accounts")}>{t.back}</ActionLink>}>
@@ -45,6 +48,7 @@ export function AccountDetailPage({
             {item.testState === "testing" ? t.testing : t.test}
           </Button>
           <Button variant="primary" size="sm" onClick={() => onUse(item.id)}>{t.use}</Button>
+          <Button variant="secondary" size="sm" onClick={() => onEdit(item.id)}>{editLabel}</Button>
         </>
       }
     >

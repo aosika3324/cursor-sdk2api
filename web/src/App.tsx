@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { runPrompt } from "./api";
 import { go, hrefFor, readRoute, type Route } from "./nav";
+import { sandSelectable } from "./quota";
 import { RailNav } from "./RailNav";
 import { AccountDetailPage } from "./pages/AccountDetailPage";
+import { AccountEditModal } from "./pages/AccountEditModal";
 import { AccountsPage } from "./pages/AccountsPage";
+import { ConfirmDialog } from "./pages/ConfirmDialog";
 import { ConnectPage } from "./pages/ConnectPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { QuotaDetail } from "./pages/QuotaDetail";
@@ -85,6 +88,8 @@ function AppInner() {
   const [recipe, setRecipe] = useState<RecipeName>("claude");
   const [copied, setCopied] = useState("");
   const [quotaFor, setQuotaFor] = useState("");
+  const [editId, setEditId] = useState("");
+  const [removeId, setRemoveId] = useState("");
   const origin = window.location.origin;
 
   useEffect(() => {
@@ -244,9 +249,9 @@ function AppInner() {
             onDraft={setDraftKey}
             onAdd={() => void addAccount()}
             onTest={(id) => void testAccount(id)}
-            onRemove={(id) => void removeAccount(id)}
-            onEdit={(id) => void editAccount(id)}
-            onProxy={(id) => void editProxy(id)}
+            onRemove={(id) => setRemoveId(id)}
+            onEdit={(id) => setEditId(id)}
+            onProxy={(id) => setEditId(id)}
             onVerify={(id) => void verifyAccount(id)}
             onDisable={(id, disabled) => void setAccountDisabled(id, disabled)}
             onBatch={(input) => void runBatch(input)}
@@ -264,6 +269,7 @@ function AppInner() {
               setActiveId(id);
               go("playground");
             }}
+            onEdit={(id) => setEditId(id)}
             onProfile={(id, profile) => void setAccountProfile(id, profile)}
             profileError={profileError}
           />
@@ -298,6 +304,29 @@ function AppInner() {
           onClose={() => setQuotaFor("")}
         />
       ) : null}
+      {(() => {
+        const editItem = roster.find((item) => item.id === editId);
+        const catalogReady = Boolean(editItem?.models && editItem.models.status !== "unavailable");
+        return (
+          <AccountEditModal
+            open={Boolean(editItem)}
+            item={editItem}
+            sandCapable={sandSelectable(editItem?.account, catalogReady)}
+            onClose={() => setEditId("")}
+            onSaveAccount={(id, edits) => editAccount(id, edits)}
+            onSaveProxy={(id, proxy) => editProxy(id, proxy)}
+            onSaveProfile={(id, profile) => setAccountProfile(id, profile)}
+          />
+        );
+      })()}
+      <ConfirmDialog
+        open={Boolean(removeId)}
+        title={t.editModal.confirmRemoveTitle}
+        body={t.editModal.confirmRemoveBody}
+        confirmLabel={t.editModal.confirmRemove}
+        onConfirm={() => void removeAccount(removeId)}
+        onClose={() => setRemoveId("")}
+      />
       <footer className="foot">
         <span>BF Labs · MIT · {protocolSummary}</span>
         <span className="foot-origin mono">{origin}</span>

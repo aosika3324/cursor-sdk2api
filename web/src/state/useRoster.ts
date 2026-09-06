@@ -11,6 +11,7 @@ import {
   updateManagedAccount,
   verifyManagedAccount,
   type ManagementAccount,
+  type ProxyInput,
 } from "../api";
 import { go, readRoute } from "../nav";
 import type { RosterItem } from "../roster";
@@ -37,8 +38,11 @@ export interface RosterState {
   addAccount: () => Promise<void>;
   onboardAccount: (sessionToken: string, grantFable5: boolean, claimSand: boolean) => Promise<void>;
   removeAccount: (id: string) => Promise<void>;
-  editAccount: (id: string) => Promise<void>;
-  editProxy: (id: string) => Promise<void>;
+  editAccount: (
+    id: string,
+    edits: { label: string; note: string; priority: number; disabled: boolean },
+  ) => Promise<boolean>;
+  editProxy: (id: string, proxy: ProxyInput | null) => Promise<boolean>;
   moveAccount: (id: string, direction: "up" | "down") => Promise<void>;
   setAccountDisabled: (id: string, disabled: boolean) => Promise<void>;
   verifyAccount: (id: string) => Promise<void>;
@@ -47,15 +51,15 @@ export interface RosterState {
     action: "enable" | "disable" | "delete" | "priority";
     priority?: number;
   }) => Promise<void>;
-  setAccountProfile: (id: string, profile: "sdk" | "sand") => Promise<void>;
+  setAccountProfile: (id: string, profile: "sdk" | "sand") => Promise<boolean>;
 }
 
 /**
  * Owns the managed-account roster plus the playground selection derived from it
  * (activeId / selectedModel) and every account mutation. This is a straight
  * relocation of the App.tsx logic: same endpoints, same fetch-on-mount, same
- * refresh semantics. `t` is passed in for the prompt/label copy the mutations
- * surface through window.prompt / error strings.
+ * refresh semantics. `t` is passed in for the error-string copy the mutations
+ * surface.
  */
 export function useRoster(t: Copy): RosterState {
   const [roster, setRoster] = useState<RosterItem[]>([]);
@@ -226,52 +230,31 @@ export function useRoster(t: Copy): RosterState {
   }, [activeId]);
 
   const editAccount = useCallback(
-    async (id: string) => {
-      const item = roster.find((entry) => entry.id === id);
-      const label = window.prompt(t.accountAdmin.labelPrompt, item?.label ?? "");
-      if (label == null) return;
-      const note = window.prompt(t.accountAdmin.notePrompt, item?.note ?? "");
-      if (note == null) return;
-      const rawPriority = window.prompt(t.accountAdmin.priorityPrompt, String(item?.priority ?? 100));
-      if (rawPriority == null) return;
-      const priority = Number.parseInt(rawPriority, 10);
-      if (!Number.isInteger(priority)) return;
+    async (id: string, edits: { label: string; note: string; priority: number; disabled: boolean }) => {
       setAddError("");
       try {
-        applyAccount(await updateManagedAccount(id, { label, note, priority }));
+        applyAccount(await updateManagedAccount(id, edits));
+        return true;
       } catch (error) {
         setAddError(messageOf(error));
+        return false;
       }
     },
-    [roster, t.accountAdmin, applyAccount],
+    [applyAccount],
   );
 
   const editProxy = useCallback(
-    async (id: string) => {
-      const item = roster.find((entry) => entry.id === id);
-      const current = item?.proxy?.configured ? `${item.proxy.scheme}://${item.proxy.host}` : "";
-      const url = window.prompt(t.accountAdmin.proxyPrompt, current);
-      if (url == null) return;
+    async (id: string, proxy: ProxyInput | null) => {
       setAddError("");
       try {
-        if (!url.trim()) {
-          applyAccount(await setManagedAccountProxy(id, null));
-          return;
-        }
-        const username = window.prompt(t.settings.proxyUser, "") ?? "";
-        const password = window.prompt(t.settings.proxyPassword, "") ?? "";
-        applyAccount(
-          await setManagedAccountProxy(id, {
-            url: url.trim(),
-            ...(username ? { username } : {}),
-            ...(password ? { password } : {}),
-          }),
-        );
+        applyAccount(await setManagedAccountProxy(id, proxy));
+        return true;
       } catch (error) {
         setAddError(messageOf(error));
+        return false;
       }
     },
-    [roster, t.accountAdmin, t.settings, applyAccount],
+    [applyAccount],
   );
 
   const moveAccount = useCallback(
@@ -366,8 +349,10 @@ export function useRoster(t: Copy): RosterState {
       try {
         const account = await setManagedDefaultProfile(id, profile);
         patchRoster(id, { account });
+        return true;
       } catch (error) {
         setProfileError(messageOf(error) || t.detail.profileError);
+        return false;
       }
     },
     [patchRoster, t.detail.profileError],

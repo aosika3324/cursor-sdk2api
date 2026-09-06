@@ -78,6 +78,31 @@
   background: var(--bf-surface);
 }
 
+.bf-button--danger {
+  background: var(--bf-color-danger);
+  color: var(--bf-color-warm-white);
+}
+
+.bf-button--danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--bf-color-danger) 82%, #000);
+  color: var(--bf-color-warm-white);
+}
+
+.bf-form-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bf-space-4);
+}
+
+.bf-form-heading {
+  margin: var(--bf-space-2) 0 0;
+  font-size: var(--bf-text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--bf-foreground-muted, var(--bf-foreground));
+}
+
 .bf-button--sm {
   min-height: var(--bf-control-sm);
   padding-inline: var(--bf-space-4);
