@@ -830,6 +830,14 @@ Expected: 全绿 + EXIT 0
 - **JWT 过期**：session token 带 `offline_access`，样本 ~43 天。到期后 sand 请求会返回鉴权错误 → 走现有 `mapSdkFailure` 报错。自动刷新（session token 换新 JWT）是后续增强，不在本计划。
 - **多账号轮转**：managed 模式下 sand 账号需存了 session token 才能被 sand 请求选中；没存 token 的账号遇 sand profile 会因 `sandJwt` 缺失回落到 clone 分支（当前 403）。account pick 逻辑是否要按"有无 sand token"过滤，属后续优化。
 
+## 实现后 follow-up（最终整体评审提出，非阻塞）
+
+实现已完成并全绿（416 测试 / tsc 干净），以下为集成缝处的观察，建议开后续 ticket：
+
+- **resume 丢历史**：`createSandAgent` 的多轮历史存在内存闭包里；resume/recovery 路径（`cursor-runtime.ts` 用 `input.agentId` 当 conversationId，但建的是空历史的新 agent）会丢掉此前轮次。需确认 InferenceService 是否按 conversationId 服务端 rehydrate；若否，resumed sand 会话会静默丢上下文。首版单会话（同一 agent 实例内多轮）不受影响。
+- **静默 403 回落**：managed sand 账号若没存 session token，会回落到 clone 分支（实跑 403），操作者只看到通用上游错误、看不出根因是缺 session token。建议：sand profile 且 `sandJwt` 缺失时给一个明确错误，或在 `publicAccount` 暴露 `hasSessionToken` 让操作者能识别哪些账号 sand-ready。
+- **真实账号端到端冒烟**：Task 9 的手动冒烟仍需用一个 sand-granted 账号跑一次（见 Task 9 Step 3），确认线上真出 Bot 文本、计到 Bot 额度。
+
 
 
 
