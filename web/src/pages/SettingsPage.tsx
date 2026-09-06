@@ -1,17 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
 import { Button } from "../bflabs/Button";
 import { Card } from "../bflabs/Card";
 import { Notice } from "../bflabs/Notice";
 import { PageFrame } from "./shared";
 import { useI18n } from "../state/I18nContext";
-import {
-  getSettings,
-  getSettingsSchema,
-  updateSettings,
-  type RuntimeSettingsView,
-  type SettingsEffect,
-  type SettingsSchema,
-} from "../api";
+import { useSettings } from "../state/useSettings";
+import { type SettingsEffect } from "../api";
 
 export interface SettingsCopy {
   title: string;
@@ -43,68 +36,20 @@ const GROUPS: Array<{ effect: SettingsEffect }> = [
 
 export function SettingsPage() {
   const t = useI18n().t.settings;
-  const [schema, setSchema] = useState<SettingsSchema | null>(null);
-  const [settings, setSettings] = useState<RuntimeSettingsView | null>(null);
-  const [draft, setDraft] = useState<Record<string, unknown>>({});
-  const [proxyDraft, setProxyDraft] = useState({ url: "", username: "", password: "" });
-  const [status, setStatus] = useState<"idle" | "saving" | "saved">("idle");
-  const [error, setError] = useState<string | null>(null);
-
-  const load = async () => {
-    setError(null);
-    try {
-      const [nextSchema, nextSettings] = await Promise.all([getSettingsSchema(), getSettings()]);
-      setSchema(nextSchema);
-      setSettings(nextSettings);
-      setDraft({});
-      setProxyDraft({ url: "", username: "", password: "" });
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    }
-  };
-
-  useEffect(() => {
-    void load();
-  }, []);
-
-  const dirty = useMemo(
-    () => Object.keys(draft).length > 0 || proxyDraft.url.trim() !== "",
-    [draft, proxyDraft.url],
-  );
-
-  const save = async () => {
-    setStatus("saving");
-    setError(null);
-    const patch: Record<string, unknown> = { ...draft };
-    if (proxyDraft.url.trim()) {
-      patch.globalProxy = {
-        url: proxyDraft.url.trim(),
-        ...(proxyDraft.username ? { username: proxyDraft.username } : {}),
-        ...(proxyDraft.password ? { password: proxyDraft.password } : {}),
-      };
-    }
-    try {
-      const next = await updateSettings(patch);
-      setSettings(next);
-      setDraft({});
-      setProxyDraft({ url: "", username: "", password: "" });
-      setStatus("saved");
-      window.setTimeout(() => setStatus("idle"), 2000);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-      setStatus("idle");
-    }
-  };
-
-  const clearProxy = async () => {
-    setError(null);
-    try {
-      setSettings(await updateSettings({ globalProxy: null }));
-      setProxyDraft({ url: "", username: "", password: "" });
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    }
-  };
+  const {
+    schema,
+    settings,
+    draft,
+    proxyDraft,
+    status,
+    error,
+    dirty,
+    setDraft,
+    setProxyDraft,
+    load,
+    save,
+    clearProxy,
+  } = useSettings();
 
   if (!schema || !settings) {
     return (

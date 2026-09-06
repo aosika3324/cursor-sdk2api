@@ -7,10 +7,14 @@ vi.mock("../../api", () => ({
   getHealth: vi.fn(),
   getManagedAccounts: vi.fn(),
   probeManagedAccount: vi.fn(),
+  getSettings: vi.fn(),
+  getSettingsSchema: vi.fn(),
+  updateSettings: vi.fn(),
 }));
 
 import * as api from "../../api";
 import { AppStateProvider, useAppState } from "../AppStateContext";
+import { AuthProvider, useAuthContext } from "../AuthContext";
 
 describe("I18nContext", () => {
   it("exposes default-language copy via useI18n().t", () => {
@@ -125,6 +129,31 @@ describe("AppStateContext", () => {
     }
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     expect(() => render(<Orphan />)).toThrow(/AppStateProvider/);
+    spy.mockRestore();
+  });
+});
+
+describe("AuthContext", () => {
+  it("defaults authenticated to true (behavior unchanged until C1)", () => {
+    function Probe() {
+      const { authenticated } = useAuthContext();
+      return <span data-testid="a">{String(authenticated)}</span>;
+    }
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>,
+    );
+    expect(screen.getByTestId("a")).toHaveTextContent("true");
+  });
+
+  it("throws when useAuthContext is used outside its provider", () => {
+    function Orphan() {
+      useAuthContext();
+      return null;
+    }
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(() => render(<Orphan />)).toThrow(/AuthProvider/);
     spy.mockRestore();
   });
 });

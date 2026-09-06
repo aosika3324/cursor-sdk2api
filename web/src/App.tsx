@@ -18,15 +18,18 @@ import type { Protocol } from "./types";
 import bfMarkUrl from "./assets/bf-mark.svg";
 import { I18nProvider, useI18n, type Copy } from "./state/I18nContext";
 import { AppStateProvider, useAppState } from "./state/AppStateContext";
+import { AuthProvider } from "./state/AuthContext";
 
 type LoadState = "idle" | "loading" | "ready" | "error";
 
 export function App() {
   return (
     <I18nProvider>
-      <AppStateProvider>
-        <AppInner />
-      </AppStateProvider>
+      <AuthProvider>
+        <AppStateProvider>
+          <AppInner />
+        </AppStateProvider>
+      </AuthProvider>
     </I18nProvider>
   );
 }
