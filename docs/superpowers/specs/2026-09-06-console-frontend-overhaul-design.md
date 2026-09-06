@@ -39,13 +39,16 @@
 
 ### 块 2：SSE 实时日志(后端 + 前端)
 **后端**：
-- 新增内存环形缓冲日志 sink(容量上限，如最近 2000 条)，捕获现有结构化 log 行。
-- **原始运行日志流**：`GET /v0/management/logs/stream`(`text/event-stream`)推送新日志行；支持初始回放最近 N 条；认证同管理接口。复用 `http-util` 的 SSE 写法。
-- **结构化请求活动**：从 `RuntimeLedger`(已存在但未暴露 HTTP)派生高层事件(账号、模型、耗时、成功/失败)，推一个更聚焦的活动流。
+- 新增内存环形缓冲日志 sink，**容量运行时可调**：档位 20/30/50/100/200/300(默认 50)。缓冲用固定上限环形队列，改档位时若调小则丢弃最旧记录，防止内存爆炸。档位改动端点：`PUT /v0/management/logs/capacity` body `{ capacity }`(仅接受白名单档位)；`GET /v0/management/logs/capacity` 返回当前值。
+- **原始运行日志流**：`GET /v0/management/logs/stream`(`text/event-stream`)推送新日志行；支持初始回放缓冲内最近 N 条；认证同管理接口。复用 `http-util` 的 SSE 写法。
+- **结构化请求活动**：**新增独立的请求遥测采集**(不改 `RuntimeLedger` 的最小元数据原则)。在 HTTP 入口/响应收尾处记录每个数据面请求：账号(hint)、时间、**客户端 IP**(取 `X-Forwarded-For` 首段，回落 socket 远端地址 —— 生产经 Caddy 反代)、模型、最终状态(HTTP 状态码 + 成功/失败)、凭据 ID(fingerprint hint)、耗时。存进独立的请求活动环形缓冲(受容量档位限制)。
+- 派生指标：**当前 RPM**(最近 60s 请求数)由遥测采集器计算，随活动流附带或 `GET /v0/management/activity/stats`。
 - 断线重连：SSE `Last-Event-ID`，端点支持从游标续传。
 **前端**：
 - `useLogStream` hook 用 `EventSource`(同源，CSP `connect-src 'self'` 已允许)。
-- 实时日志面板(等宽、自动滚动、level 过滤、暂停/继续、清屏)+ 请求活动面板(账号 hint、模型、状态 tag、耗时)。状态用 `StatusTag`。
+- **请求活动面板**(参考用户提供的设计图)：顶部工具栏 —— 当前 RPM 数值、状态码筛选输入(如 200/429)、凭据 ID 筛选输入、**容量档位下拉(20/30/50/100/200/300)**、刷新按钮、清空筛选、导出所选(CSV/JSON)、清空全部(危险色)、自动刷新开关、"本页 N 条记录"统计。表格列：账号 / 时间 / 客户端 IP / 模型 / 最终状态。行可勾选(导出所选)。状态用 `StatusTag`(2xx success、4xx/5xx danger、进行中 progress)。
+- **原始运行日志面板**：等宽、自动滚动、level 过滤、暂停/继续、清屏。
+- 容量下拉改动即调 `PUT /logs/capacity`，前端不缓存超过后端容量的记录。
 
 ### 块 3：额度进度条统一强化
 - 合并 `QuotaMeters` 和 `QuotaDetail` 两套实现为一个 bflabs 级 `Meter`/`MeterGroup`(tone 传达压力、始终打印数值)。
@@ -69,6 +72,7 @@
 - 登录后 `/v0/management/*` 全锁 —— 本次最重要的安全提升(当前公网无保护)。
 - session cookie：httpOnly + SameSite=Strict + Secure(生产经 Caddy TLS)。CSRF：SameSite=Strict 基本够，状态变更端点可加 Origin 校验(同 onboarding 现有处理)。
 - 日志 sink 沿用现有脱敏(不打印 key/token/prompt body)，SSE 端点认证同管理接口。
+- 请求活动含客户端 IP(PII)：仅内存环形缓冲(不落盘)、受容量档位上限、认证后可见、可"清空全部"。不写入持久 ledger。
 - access key 只在登录时提交一次，之后靠 cookie，不存前端。
 
 ## 验证策略
