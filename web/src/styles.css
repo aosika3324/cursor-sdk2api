@@ -6,10 +6,14 @@
   --hair: #111417;
   --hover: var(--bf-surface, #f0eeeb);
   --accent: var(--bf-color-orange, #ff6a33);
-  /* Legacy aliases mapped onto bflabs tokens (auto-adapt per tone). */
+  /* Legacy aliases mapped onto bflabs tokens (auto-adapt per tone).
+     NOTE: --surface must stay OPAQUE — bf-surface is ~97% transparent
+     (color-mix ... transparent), so opaque fills (modal panels, dropdowns,
+     active tabs) use --bf-background; use --bf-surface only for subtle tints. */
   --line: var(--bf-divider);
-  --surface: var(--bf-surface);
-  --surface-2: var(--bf-surface);
+  --surface: var(--bf-background);
+  --surface-2: var(--bf-background);
+  --surface-tint: var(--bf-surface);
   --text-muted: var(--bf-foreground-muted);
   --danger: var(--bf-color-danger);
   --font: "Avenir Next", "Helvetica Neue", "Noto Sans SC", "PingFang SC", sans-serif;

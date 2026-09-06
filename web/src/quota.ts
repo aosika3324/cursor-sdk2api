@@ -80,9 +80,10 @@ export function formatPercent(value: number): string {
 }
 
 export function cursorSpend(account?: AccountPayload): { used: number; limit: number } | undefined {
-  if (!account?.capabilities.limits || !account.limits) return undefined;
-  const used = finiteNumber(account.limits.used_usd);
-  const limit = finiteNumber(account.limits.limit_usd);
+  if (!account) return undefined;
+  // used_usd lives under `spending`; limit_usd lives under `limits`.
+  const used = finiteNumber(account.spending?.used_usd);
+  const limit = finiteNumber(account.limits?.limit_usd);
   if (used === undefined || limit === undefined || limit <= 0) return undefined;
   return { used, limit };
 }
