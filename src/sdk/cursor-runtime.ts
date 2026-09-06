@@ -24,6 +24,7 @@ import { DEFAULT_RUNTIME_PROFILE, type RuntimeProfile } from "../core/runtime-pr
 import { credentialFingerprint } from "../digest.js";
 import { fetchCursorDashboardQuota } from "../account/cursor-dashboard.js";
 import { ensureSandSdkClone } from "./sand-loader.js";
+import { createSandAgent } from "./sand-runtime.js";
 import { sandStoreDir, sandWorkspaceDir } from "./sand-paths.js";
 
 const require = createRequire(import.meta.url);
@@ -258,6 +259,17 @@ export function createCursorRuntime(options: { stateDir: string }): SdkRuntime {
   };
   const bindAgent = async (input: CreateAgentInput | ResumeAgentInput, kind: "create" | "resume"): Promise<SdkAgent> => {
     const profile = input.runtimeProfile ?? DEFAULT_RUNTIME_PROFILE;
+    // Sand inference cannot go through the SDK (no InferenceService binding);
+    // when a session-token JWT is available, drive it via direct connect.
+    if (profile === "sand" && input.sandJwt) {
+      const conversationId = "agentId" in input ? input.agentId : globalThis.crypto.randomUUID();
+      return createSandAgent({
+        jwt: input.sandJwt,
+        modelId: input.modelId,
+        conversationId,
+        modelParams: input.modelParams,
+      });
+    }
     const hostedSearch = input.hostedSearch === true;
     const customTools = input.customTools;
     const resources = tenantResources(input.apiKey, input.workspaceDir, profile);
