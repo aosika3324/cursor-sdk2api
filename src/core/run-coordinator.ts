@@ -468,6 +468,7 @@ export class RunCoordinator {
           agentId: parent.agentId,
           apiKey: auth.cursorApiKey,
           workspaceDir: this.workspaceFor(profile),
+          sandJwt: auth.sandJwt,
         },
         afterAgentReady: () => {
           this.traceOrdinary({
@@ -595,7 +596,7 @@ export class RunCoordinator {
         {
           session,
           tools: parsed.tools,
-          agent: { type: "create", apiKey: auth.cursorApiKey, workspaceDir: this.workspaceFor(profile) },
+          agent: { type: "create", apiKey: auth.cursorApiKey, workspaceDir: this.workspaceFor(profile), sandJwt: auth.sandJwt },
           send: prompt,
         },
         logicalKey,
@@ -875,7 +876,7 @@ export class RunCoordinator {
         {
           session,
           tools: parsed.tools,
-          agent: { type: "create", apiKey: auth.cursorApiKey, workspaceDir: this.workspaceFor(profile) },
+          agent: { type: "create", apiKey: auth.cursorApiKey, workspaceDir: this.workspaceFor(profile), sandJwt: auth.sandJwt },
           send: { text: recovery.prompt, images: parsed.images },
           completedResults: recovery.completedResults,
         },
@@ -982,6 +983,7 @@ export class RunCoordinator {
             agentId: record.sdkAgentId,
             apiKey: auth.cursorApiKey,
             workspaceDir: this.workspaceFor(boundProfile),
+            sandJwt: auth.sandJwt,
           },
           send: { text: recoveredToolResultPrompt(record, results), force: true },
         },
@@ -1140,6 +1142,7 @@ export class RunCoordinator {
         agentId: record.sdkAgentId,
         apiKey: auth.cursorApiKey,
         workspaceDir: this.workspaceFor(boundProfile),
+        sandJwt: auth.sandJwt,
       },
       failureReason: "resume_failed",
     });

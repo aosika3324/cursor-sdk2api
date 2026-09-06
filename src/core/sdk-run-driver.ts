@@ -11,8 +11,8 @@ import type { Session } from "./session.js";
 import { mapClientTools } from "./tool-bridge.js";
 
 export type SdkAgentSource =
-  | { type: "create"; apiKey: string; workspaceDir: string }
-  | { type: "resume"; agentId: string; apiKey: string; workspaceDir: string }
+  | { type: "create"; apiKey: string; workspaceDir: string; sandJwt?: string }
+  | { type: "resume"; agentId: string; apiKey: string; workspaceDir: string; sandJwt?: string }
   | { type: "existing"; agent: SdkAgent };
 
 export interface DriveSdkRunInput {
@@ -118,12 +118,14 @@ export class SdkRunDriver {
         agentId: input.agent.agentId,
         apiKey: input.agent.apiKey,
         workspaceDir: input.agent.workspaceDir,
+        sandJwt: input.agent.sandJwt,
       });
     }
     return this.deps.sdk.createAgent({
       ...common,
       apiKey: input.agent.apiKey,
       workspaceDir: input.agent.workspaceDir,
+      sandJwt: input.agent.sandJwt,
     });
   }
 }
