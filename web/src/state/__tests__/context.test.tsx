@@ -1,6 +1,16 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, act, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { I18nProvider, useI18n, COPY } from "../I18nContext";
+
+vi.mock("../../api", () => ({
+  getHealth: vi.fn(),
+  getManagedAccounts: vi.fn(),
+  probeManagedAccount: vi.fn(),
+}));
+
+import * as api from "../../api";
+import { AppStateProvider, useAppState } from "../AppStateContext";
 
 describe("I18nContext", () => {
   it("exposes default-language copy via useI18n().t", () => {
@@ -49,6 +59,72 @@ describe("I18nContext", () => {
     // Silence the expected React error boundary console noise.
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     expect(() => render(<Orphan />)).toThrow(/I18nProvider/);
+    spy.mockRestore();
+  });
+});
+
+describe("AppStateContext", () => {
+  beforeEach(() => {
+    vi.mocked(api.getManagedAccounts).mockResolvedValue([]);
+    vi.mocked(api.probeManagedAccount).mockResolvedValue({
+      models: { data: [] },
+      account: {},
+    } as never);
+  });
+
+  function wrap(node: ReactNode) {
+    return (
+      <I18nProvider>
+        <AppStateProvider>{node}</AppStateProvider>
+      </I18nProvider>
+    );
+  }
+
+  it("exposes fetched health via useAppState (useHealth)", async () => {
+    vi.mocked(api.getHealth).mockResolvedValue({
+      status: "ok",
+      version: "9.9.9",
+      capabilities: {},
+      network: { proxy_configured: false },
+    } as never);
+
+    function Probe() {
+      const { health } = useAppState();
+      return <span data-testid="v">{health?.version ?? "…"}</span>;
+    }
+
+    render(wrap(<Probe />));
+    await waitFor(() => expect(screen.getByTestId("v")).toHaveTextContent("9.9.9"));
+    expect(api.getHealth).toHaveBeenCalledTimes(1);
+  });
+
+  it("loads the roster on mount from getManagedAccounts", async () => {
+    vi.mocked(api.getHealth).mockResolvedValue({
+      status: "ok",
+      capabilities: {},
+      network: { proxy_configured: false },
+    } as never);
+    vi.mocked(api.getManagedAccounts).mockResolvedValue([
+      { id: "acct-1", key_hint: "abcd", added_at: 1 },
+    ] as never);
+
+    function Probe() {
+      const { roster } = useAppState();
+      return <span data-testid="n">{roster.length}</span>;
+    }
+
+    render(wrap(<Probe />));
+    await waitFor(() => expect(screen.getByTestId("n")).toHaveTextContent("1"));
+    expect(api.getManagedAccounts).toHaveBeenCalledTimes(1);
+  });
+
+  it("throws when useAppState is used outside its provider", () => {
+    function Orphan() {
+      useAppState();
+      return null;
+    }
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(() => render(<Orphan />)).toThrow(/AppStateProvider/);
     spy.mockRestore();
   });
 });
