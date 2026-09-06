@@ -365,6 +365,51 @@ export async function verifyManagedAccount(
   });
 }
 
+/**
+ * Session-gated JSON fetch for the /v0/management/logs and /v0/management/activity
+ * surfaces. Mirrors managementJson/settingsJson: same credentials + 401 → session
+ * expired handling. `base` is the sub-path under /v0/management.
+ */
+async function observabilityJson<T>(
+  base: "logs" | "activity",
+  init: RequestInit & { path?: string },
+): Promise<T> {
+  const headers = new Headers(init.headers);
+  const response = await fetch(`/v0/management/${base}${init.path ?? ""}`, {
+    ...init,
+    headers,
+    credentials: "same-origin",
+  });
+  if (response.status === 401) throw new UnauthorizedError();
+  if (!response.ok) throw new Error(await errorMessage(response));
+  return (await response.json()) as T;
+}
+
+export interface LogCapacity {
+  capacity: number;
+  steps: number[];
+}
+
+/** GET /v0/management/logs/capacity → current capacity + selectable steps. */
+export async function getLogCapacity(): Promise<LogCapacity> {
+  return observabilityJson<LogCapacity>("logs", { method: "GET", path: "/capacity" });
+}
+
+/** PUT /v0/management/logs/capacity — sets both the log and activity capacity. */
+export async function setLogCapacity(capacity: number): Promise<LogCapacity> {
+  return observabilityJson<LogCapacity>("logs", {
+    method: "PUT",
+    path: "/capacity",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ capacity }),
+  });
+}
+
+/** GET /v0/management/activity/stats → requests-per-minute gauge. */
+export async function getActivityStats(): Promise<{ rpm: number }> {
+  return observabilityJson<{ rpm: number }>("activity", { method: "GET", path: "/stats" });
+}
+
 async function errorMessage(response: Response): Promise<string> {
   const text = await response.text();
   try {

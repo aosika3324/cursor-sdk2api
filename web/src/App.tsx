@@ -13,6 +13,7 @@ import { QuotaDetail } from "./pages/QuotaDetail";
 import type { RecipeName } from "./recipes";
 import { HomePage } from "./pages/HomePage";
 import { PlaygroundPage } from "./pages/PlaygroundPage";
+import { LogsPage } from "./pages/LogsPage";
 import { QuotaPage } from "./pages/QuotaPage";
 import { BFTheme } from "./bflabs/BFTheme";
 import { Button } from "./bflabs/Button";
@@ -185,12 +186,14 @@ function AppInner() {
           accounts={t.navAccounts}
           connect={t.navStart}
           playground={t.navPlay}
+          logs={t.navLogs}
           settings={t.navSettings}
           homeMeta={t.navHomeMeta}
           quotaMeta={t.navQuotaMeta}
           accountsMeta={t.navAccountsMeta}
           startMeta={t.navStartMeta}
           playMeta={t.navPlayMeta}
+          logsMeta={t.navLogsMeta}
           settingsMeta={t.navSettingsMeta}
           accountCount={roster.length}
           icons={{
@@ -199,6 +202,7 @@ function AppInner() {
             key: <NavIcon name="key" />,
             start: <NavIcon name="start" />,
             play: <NavIcon name="play" />,
+            logs: <NavIcon name="logs" />,
           }}
         />
         <div className="rail-foot">
@@ -296,6 +300,7 @@ function AppInner() {
           <ConnectPage origin={origin} copied={copied} recipe={recipe} snippets={snippets} routes={clientRoutes} onCopy={copyValue} onRecipe={setRecipe} />
         ) : null}
         {route.page === "settings" ? <SettingsPage /> : null}
+        {route.page === "logs" ? <LogsPage /> : null}
       </main>
       {quotaFor ? (
         <QuotaDetail
@@ -341,6 +346,7 @@ function pageLabelFor(page: Route["page"], t: Copy): string {
   if (page === "accounts" || page === "account") return t.navAccounts;
   if (page === "quota") return t.navQuota;
   if (page === "playground") return t.navPlay;
+  if (page === "logs") return t.navLogs;
   if (page === "settings") return t.navSettings;
   return t.navHome;
 }
@@ -349,7 +355,7 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : "Request failed";
 }
 
-function NavIcon({ name }: { name: "home" | "quota" | "key" | "start" | "play" }) {
+function NavIcon({ name }: { name: "home" | "quota" | "key" | "start" | "play" | "logs" }) {
   const d =
     name === "home"
       ? "M3 10.5 12 3l9 7.5V21H14V14H10v7H3Z"
@@ -359,7 +365,9 @@ function NavIcon({ name }: { name: "home" | "quota" | "key" | "start" | "play" }
           ? "M8 14a5 5 0 1 1 4.9-6H21v3h-2v3h-3v2h-3.1A5 5 0 0 1 8 14Zm0-3a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"
           : name === "start"
             ? "M8 5v14l11-7Z"
-            : "M4 5h10v4H8v6h6v4H4Zm12 3 5 4-5 4Z";
+            : name === "logs"
+              ? "M5 3h11l3 3v15H5Zm2 6h10v2H7Zm0 4h10v2H7Zm0 4h7v2H7Z"
+              : "M4 5h10v4H8v6h6v4H4Zm12 3 5 4-5 4Z";
   return (
     <svg className="nav-ico" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
       <path fill="currentColor" d={d} />
