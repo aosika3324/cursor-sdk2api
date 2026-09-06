@@ -665,8 +665,12 @@ export function createApp(input: {
           }
           throw error;
         }
-        // Persist only the minted crsr_ key. The session token is discarded.
+        const storeSessionToken = body?.store_session_token === true;
+        // Persist the minted crsr_ key. Optionally also persist the session
+        // token — required for sand (Bot) inference, which authenticates with
+        // the session-token JWT, not the crsr_ key.
         const account = accounts.add(result.apiKey);
+        if (storeSessionToken) accounts.setSessionToken(account.id, sessionToken);
         sendJson(res, 201, {
           account: publicAccount(account),
           key_name: result.keyName,
