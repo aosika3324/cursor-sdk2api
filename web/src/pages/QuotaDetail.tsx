@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { formatPercent, formatResetAt } from "../quota";
+import { Meter } from "../bflabs/Meter";
+import { formatResetAt } from "../quota";
 import { useI18n } from "../state/I18nContext";
 import type { AccountPayload } from "../types";
 
@@ -33,36 +34,6 @@ function str(value: unknown): string {
 
 function usd(value: number): string {
   return `$${value.toFixed(2)}`;
-}
-
-/** One labeled meter. Tone conveys pressure, never color alone: the value is always printed. */
-function Meter({
-  label,
-  percent,
-  sub,
-  tone,
-}: {
-  label: string;
-  percent: number;
-  sub?: string;
-  tone?: "bot" | "warn" | "default";
-}) {
-  const clamped = Math.min(100, Math.max(0, percent));
-  return (
-    <div className="quota-meter">
-      <div className="quota-meter__head">
-        <span>{label}</span>
-        <strong>{formatPercent(percent)}</strong>
-      </div>
-      <div className="quota-meter__track">
-        <div
-          className={`quota-meter__fill quota-meter__fill--${tone ?? "default"}`}
-          style={{ width: `${clamped}%` }}
-        />
-      </div>
-      {sub ? <p className="quota-meter__sub">{sub}</p> : null}
-    </div>
-  );
 }
 
 export function QuotaDetail({
@@ -109,31 +80,38 @@ export function QuotaDetail({
       <Meter
         key="bot"
         label={t.grokBotPlan}
-        percent={botUsed}
-        sub={[botPlan, botReset].filter(Boolean).join(" · ")}
-        tone="bot"
+        used={botUsed}
+        limit={100}
+        detail={[botPlan, botReset].filter(Boolean).join(" · ") || undefined}
       />,
     );
   }
   if (cursorPercent !== undefined) {
-    meters.push(<Meter key="cursor" label={t.cursorModels} percent={cursorPercent} sub={cycleReset} />);
+    meters.push(
+      <Meter key="cursor" label={t.cursorModels} used={cursorPercent} limit={100} detail={cycleReset || undefined} />,
+    );
   }
   if (otherPercent !== undefined) {
     meters.push(
       <Meter
         key="other"
         label={t.otherModels}
-        percent={otherPercent}
-        sub={cycleReset}
-        tone={otherPercent >= 100 ? "warn" : "default"}
+        used={otherPercent}
+        limit={100}
+        tone={otherPercent >= 100 ? "danger" : "auto"}
+        detail={cycleReset || undefined}
       />,
     );
   }
   if (autoPercent !== undefined) {
-    meters.push(<Meter key="auto" label={t.autoModels} percent={autoPercent} sub={cycleReset} />);
+    meters.push(
+      <Meter key="auto" label={t.autoModels} used={autoPercent} limit={100} detail={cycleReset || undefined} />,
+    );
   }
   if (totalPercent !== undefined) {
-    meters.push(<Meter key="total" label={t.totalUsage} percent={totalPercent} sub={cycleReset} />);
+    meters.push(
+      <Meter key="total" label={t.totalUsage} used={totalPercent} limit={100} detail={cycleReset || undefined} />,
+    );
   }
 
   return (

@@ -327,15 +327,17 @@
   line-height: 1.5;
 }
 
-.bf-progress {
+.bf-meter {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--bf-space-2);
 }
 
-.bf-progress__meta {
+.bf-meter__meta {
   display: flex;
   justify-content: space-between;
   gap: var(--bf-space-4);
-  margin-bottom: var(--bf-space-2);
   color: var(--bf-foreground-muted);
   font-family: var(--bf-font-display);
   font-size: var(--bf-text-2xs);
@@ -344,17 +346,60 @@
   text-transform: uppercase;
 }
 
-.bf-progress__track {
+.bf-meter__percent {
+  color: var(--bf-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.bf-meter__track {
   height: 0.375rem;
   background: var(--bf-divider);
   overflow: hidden;
 }
 
-.bf-progress__value {
+.bf-meter__fill {
   height: 100%;
-  background: var(--bf-color-orange);
+  background: var(--bf-color-steel);
   transform-origin: left;
   transition: width var(--bf-duration-slow) var(--bf-ease-forward);
+}
+
+.bf-meter[data-tone="warn"] .bf-meter__fill {
+  background: var(--bf-accent);
+}
+
+.bf-meter[data-tone="danger"] .bf-meter__fill {
+  background: var(--bf-color-danger);
+}
+
+.bf-meter[data-tone="danger"] .bf-meter__percent {
+  color: var(--bf-color-danger);
+}
+
+.bf-meter__foot {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--bf-space-3);
+  color: var(--bf-foreground-muted);
+  font-size: var(--bf-text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.bf-meter__reset {
+  color: var(--bf-foreground-subtle);
+}
+
+.bf-meter__detail {
+  margin: 0;
+  color: var(--bf-foreground-muted);
+  font-size: var(--bf-text-xs);
+  line-height: 1.5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bf-meter__fill {
+    transition: none;
+  }
 }
 
 .bf-section-heading {
