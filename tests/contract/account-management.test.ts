@@ -98,6 +98,7 @@ describe("account pool selection", () => {
     proxy: null,
     note: "",
     lastError: null,
+    hasSessionToken: false,
   });
 
   it("never selects a disabled account", () => {

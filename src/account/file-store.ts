@@ -34,6 +34,7 @@ interface AccountFile {
   proxy?: ProxyCredentials | null;
   note?: string;
   last_error?: AccountFailure | null;
+  session_token?: string;
 }
 
 
@@ -51,6 +52,8 @@ export interface StoredCursorAccount {
   proxy: ProxyCredentials | null;
   note: string;
   lastError: AccountFailure | null;
+  /** True when a session token (for sand JWT auth) is stored. */
+  hasSessionToken: boolean;
 }
 
 /** Fields an operator may edit through the console. */
@@ -166,6 +169,22 @@ export class CursorAccountFileStore {
     return this.mutate(id, (account) => ({ ...account, last_error: failure }));
   }
 
+  /** Persist (or clear) the account's session token used for sand JWT auth. */
+  setSessionToken(id: string, token: string | null): StoredCursorAccount | undefined {
+    return this.mutate(id, (account) => ({
+      ...account,
+      session_token: token ? token : undefined,
+    }));
+  }
+
+  /** Read the raw session token. Not exposed via toPublic. */
+  getSessionToken(id: string): string | undefined {
+    const name = `${id}.json`;
+    if (!FILE_RE.test(name)) return undefined;
+    const account = this.read(join(this.dir, name));
+    return account?.session_token;
+  }
+
   private mutate(
     id: string,
     change: (account: AccountFile) => AccountFile,
@@ -238,6 +257,7 @@ export class CursorAccountFileStore {
       proxy: account.proxy ?? null,
       note: typeof account.note === "string" ? account.note : "",
       lastError: account.last_error ?? null,
+      hasSessionToken: typeof account.session_token === "string" && account.session_token.length > 0,
     };
   }
 }
