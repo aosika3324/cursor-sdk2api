@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  createFrameDecoder,
   decodeConnectEnvelopes,
   decodeInferenceFrame,
   encodeConnectEnvelope,
@@ -187,5 +188,37 @@ describe("connect envelope framing", () => {
     const framed = encodeConnectEnvelope(new Uint8Array(300));
     // 300 = 0x012C -> bytes [0,0,1,44]
     expect([framed[1], framed[2], framed[3], framed[4]]).toEqual([0, 0, 1, 44]);
+  });
+});
+
+describe("streaming frame decoder", () => {
+  it("emits frames as bytes arrive across chunk boundaries", () => {
+    const f1 = encodeConnectEnvelope(Uint8Array.from([1, 2, 3]), 0);
+    const f2 = encodeConnectEnvelope(Uint8Array.from([4, 5]), 2);
+    const whole = Uint8Array.from([...f1, ...f2]);
+    const dec = createFrameDecoder();
+    const a = dec.push(whole.subarray(0, 4)); // partial first frame
+    expect(a).toEqual([]);
+    const b = dec.push(whole.subarray(4));
+    expect(b.map((f) => f.flag)).toEqual([0, 2]);
+    expect([...b[0]!.payload]).toEqual([1, 2, 3]);
+    expect([...b[1]!.payload]).toEqual([4, 5]);
+  });
+
+  it("holds an incomplete trailing frame until completed", () => {
+    const f = encodeConnectEnvelope(Uint8Array.from([7, 7, 7]));
+    const dec = createFrameDecoder();
+    expect(dec.push(f.subarray(0, 6))).toEqual([]); // header + 1 byte
+    const out = dec.push(f.subarray(6));
+    expect(out).toHaveLength(1);
+    expect([...out[0]!.payload]).toEqual([7, 7, 7]);
+  });
+
+  it("emits multiple frames delivered in one chunk", () => {
+    const f1 = encodeConnectEnvelope(Uint8Array.from([1]), 0);
+    const f2 = encodeConnectEnvelope(Uint8Array.from([2]), 0);
+    const dec = createFrameDecoder();
+    const out = dec.push(Uint8Array.from([...f1, ...f2]));
+    expect(out).toHaveLength(2);
   });
 });

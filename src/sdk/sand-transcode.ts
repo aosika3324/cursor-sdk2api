@@ -240,3 +240,34 @@ export function decodeConnectEnvelopes(buf: Uint8Array): Array<{ flag: number; p
   }
   return frames;
 }
+
+export interface ConnectFrame {
+  flag: number;
+  payload: Uint8Array;
+}
+
+/** Stateful decoder: push byte chunks, get back completed connect frames. */
+export function createFrameDecoder(): { push(chunk: Uint8Array): ConnectFrame[] } {
+  let buf = new Uint8Array(0);
+  return {
+    push(chunk: Uint8Array): ConnectFrame[] {
+      const merged = new Uint8Array(buf.length + chunk.length);
+      merged.set(buf, 0);
+      merged.set(chunk, buf.length);
+      buf = merged;
+      const frames: ConnectFrame[] = [];
+      let i = 0;
+      while (i + 5 <= buf.length) {
+        const flag = buf[i]!;
+        const len = (buf[i + 1]! << 24) | (buf[i + 2]! << 16) | (buf[i + 3]! << 8) | buf[i + 4]!;
+        const start = i + 5;
+        const end = start + len;
+        if (end > buf.length) break; // incomplete; wait for more
+        frames.push({ flag, payload: buf.slice(start, end) });
+        i = end;
+      }
+      buf = buf.slice(i);
+      return frames;
+    },
+  };
+}
