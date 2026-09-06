@@ -12,6 +12,12 @@ import { readAccount } from "../account/service.js";
 import { CursorAccountFileStore, type StoredCursorAccount } from "../account/file-store.js";
 import { onboardCursorAccount, OnboardingError, normalizeSessionToken, looksLikeSessionToken } from "../account/cursor-onboarding.js";
 import { probeSandInference } from "../sdk/sand-probe.js";
+import {
+  ConsoleSessionStore,
+  CONSOLE_COOKIE,
+  parseCookie,
+  serializeSessionCookie,
+} from "./console-auth.js";
 import { SettingsStore } from "../core/settings/store.js";
 import { SETTINGS_SCHEMA, settingsEffect } from "../core/settings/schema.js";
 import { parseProxyValue, SettingsValidationError } from "../core/settings/validate.js";
@@ -30,6 +36,9 @@ import { OrdinaryTurnJournal } from "../core/ordinary-turn-journal.js";
 import { RuntimeLedger } from "../core/runtime-ledger.js";
 import { inspectSandLoader, type SandLoaderHealth } from "../sdk/sand-loader.js";
 import { SessionRegistry } from "../core/session-registry.js";
+import { LogSink, type LogEntry } from "../core/log-sink.js";
+import { RequestTelemetry } from "../core/request-telemetry.js";
+import { handleLogRoutes } from "./log-routes.js";
 import {
   forbiddenError,
   GatewayError,
@@ -42,7 +51,7 @@ import {
   upstreamError,
 } from "../errors.js";
 import { requestId as newRequestId } from "../ids.js";
-import type { Logger } from "../log.js";
+import { sanitize, type Logger } from "../log.js";
 import { parseMessagesRequest } from "../protocols/anthropic/parse.js";
 import type { ParsedMessages } from "../protocols/anthropic/types.js";
 import { estimateAnthropicInputTokens } from "../protocols/anthropic/count-tokens.js";
@@ -139,6 +148,32 @@ function staleCredentialSessionError(error: unknown): boolean {
   return !/invalid|revoked|expired|disabled|unauthorized api key/i.test(error.message);
 }
 
+export function createTeeLogger(
+  baseLogger: Logger,
+  logSink: LogSink,
+  clock: { now: () => number },
+): Logger {
+  const tee = (level: LogEntry["level"], fields: Record<string, unknown>, message: string) => {
+    const safeFields = sanitize(fields) as Record<string, unknown>;
+    const safeMsg = sanitize(String(message)) as string;
+    logSink.push({ level, msg: safeMsg, at: clock.now(), ...safeFields });
+  };
+  return {
+    info: (fields, message) => {
+      tee("info", fields, message);
+      baseLogger.info(fields, message);
+    },
+    warn: (fields, message) => {
+      tee("warn", fields, message);
+      baseLogger.warn(fields, message);
+    },
+    error: (fields, message) => {
+      tee("error", fields, message);
+      baseLogger.error(fields, message);
+    },
+  };
+}
+
 export function createApp(input: {
   config: GatewayConfig;
   sdk: SdkRuntime;
@@ -149,8 +184,14 @@ export function createApp(input: {
   fetchSandQuota?: typeof fetchCursorSandQuota;
   sandHealth?: SandLoaderHealth;
   assertSandAccess?: (apiKey: string) => Promise<void>;
+  logSink?: LogSink;
+  telemetry?: RequestTelemetry;
 }): App {
-  const { config, sdk, clock, logger, workspaceDir, beforeApplyBoundary } = input;
+  const { config, sdk, clock, workspaceDir, beforeApplyBoundary } = input;
+  const logSink = input.logSink ?? new LogSink();
+  const telemetry = input.telemetry ?? new RequestTelemetry();
+  const baseLogger = input.logger;
+  const logger: Logger = createTeeLogger(baseLogger, logSink, clock);
   const fetchSandQuota = input.fetchSandQuota ?? fetchCursorSandQuota;
   const sandHealth = input.sandHealth ?? inspectSandLoader();
   const assertSandAccess = input.assertSandAccess ?? (async (apiKey: string) => {
@@ -190,6 +231,7 @@ export function createApp(input: {
   const catalog = new ModelCatalog(sdk, clock, config.catalogCacheMs);
   const accounts = new CursorAccountFileStore(config.stateDir, config.managedCursorKey);
   const accountPool = new CursorAccountPool();
+  const consoleSessions = new ConsoleSessionStore();
   const settings = new SettingsStore(config.stateDir, {
     logLevel: config.logLevel,
     hostedSearchMode: config.runtimePolicy.hostedSearchMode,
@@ -423,6 +465,41 @@ export function createApp(input: {
   }, Math.max(20, config.sweepIntervalMs));
   sweepTimer.unref();
 
+  const clientIpOf = (req: IncomingMessage): string =>
+    headerValue(req, "x-forwarded-for")?.split(",")[0]?.trim() || req.socket.remoteAddress || "";
+
+  const recordActivity = (
+    req: IncomingMessage,
+    info: { status: number; model: string; fingerprint: string; startedAt: number },
+  ): void => {
+    telemetry.record({
+      account: info.fingerprint,
+      at: clock.now(),
+      clientIp: clientIpOf(req),
+      model: info.model,
+      status: info.status,
+      credentialId: info.fingerprint,
+      durationMs: clock.now() - info.startedAt,
+    });
+  };
+
+  const withTelemetry = async (
+    req: IncomingMessage,
+    res: ServerResponse,
+    fpRef: { model: string; fingerprint: string },
+    startedAt: number,
+    run: () => Promise<void>,
+  ): Promise<void> => {
+    try {
+      await run();
+      recordActivity(req, { status: res.statusCode, model: fpRef.model, fingerprint: fpRef.fingerprint, startedAt });
+    } catch (error) {
+      const status = error instanceof GatewayError ? error.httpStatus : 502;
+      recordActivity(req, { status, model: fpRef.model, fingerprint: fpRef.fingerprint, startedAt });
+      throw error;
+    }
+  };
+
   const handler = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     const requestId = headerValue(req, "x-request-id") || newRequestId();
     const path = requestPath(req);
@@ -491,6 +568,72 @@ export function createApp(input: {
         );
         return;
       }
+
+      if (path === "/v0/management/auth/login" && method === "POST") {
+        const body = (await readJsonBody(req, config.maxBodyBytes)) as
+          | { access_key?: unknown }
+          | undefined;
+        if (config.authMode !== "managed") {
+          sendJson(res, 501, { error: "console auth unavailable in byok mode" }, requestId);
+          return;
+        }
+        const accessKey = typeof body?.access_key === "string" ? body.access_key : "";
+        if (accessKey === config.gatewayAccessKey) {
+          const token = consoleSessions.create();
+          res.setHeader(
+            "Set-Cookie",
+            serializeSessionCookie(token, {
+              secure: headerValue(req, "x-forwarded-proto") === "https",
+            }),
+          );
+          sendJson(res, 200, { ok: true }, requestId);
+          return;
+        }
+        sendJson(res, 401, { error: "invalid access key" }, requestId);
+        return;
+      }
+
+      if (path === "/v0/management/auth/logout" && method === "POST") {
+        const token = parseCookie(headerValue(req, "cookie"), CONSOLE_COOKIE);
+        if (token) consoleSessions.destroy(token);
+        res.setHeader("Set-Cookie", serializeSessionCookie("", { secure: false, maxAge: 0 }));
+        sendJson(res, 200, { ok: true }, requestId);
+        return;
+      }
+
+      if (path === "/v0/management/auth/session" && method === "GET") {
+        const token = parseCookie(headerValue(req, "cookie"), CONSOLE_COOKIE);
+        sendJson(
+          res,
+          200,
+          { authenticated: !!token && consoleSessions.validate(token) },
+          requestId,
+        );
+        return;
+      }
+
+      if (path.startsWith("/v0/management/") && config.authMode === "managed") {
+        const token = parseCookie(headerValue(req, "cookie"), CONSOLE_COOKIE);
+        if (!token || !consoleSessions.validate(token)) {
+          sendJson(res, 401, { error: "unauthorized" }, requestId);
+          return;
+        }
+      }
+
+      if (
+        await handleLogRoutes({
+          req,
+          res,
+          path,
+          method,
+          requestId,
+          logSink,
+          telemetry,
+          clock,
+          maxBodyBytes: config.maxBodyBytes,
+        })
+      )
+        return;
 
       if (path === "/v0/management/accounts/probe" && method === "GET") {
         const id = new URL(req.url ?? "/", "http://localhost").searchParams.get("id")?.trim() ?? "";
@@ -881,36 +1024,47 @@ export function createApp(input: {
       }
 
       if (method === "POST" && path === "/v1/messages") {
+        const startedAt = clock.now();
         const client = authorizeClient(req, config);
         const body = await readJsonBody(req, config.maxBodyBytes);
         if (body === undefined) throw invalidRequest("JSON body is required");
         const parsed = parseMessagesRequest(body);
         const sessionHint = headerValue(req, "x-cursor-session-id");
-        await runWithProviderRecovery(res, client, parsed, sessionHint, (auth) =>
-          coordinator.handleMessages(req, res, auth, parsed, requestId, sessionHint));
+        const ref = { model: parsed.model, fingerprint: "" };
+        await withTelemetry(req, res, ref, startedAt, () =>
+          runWithProviderRecovery(res, client, parsed, sessionHint, (auth) => {
+            ref.fingerprint = auth.fingerprint;
+            return coordinator.handleMessages(req, res, auth, parsed, requestId, sessionHint);
+          }));
         return;
       }
 
       if (method === "POST" && path === "/v1/chat/completions") {
+        const startedAt = clock.now();
         const client = authorizeClient(req, config);
         const body = await readJsonBody(req, config.maxBodyBytes);
         if (body === undefined) throw invalidRequest("JSON body is required");
         const chat = parseChatCompletionsRequest(body);
         const sessionHint = headerValue(req, "x-cursor-session-id");
-        await runWithProviderRecovery(res, client, chat.parsed, sessionHint, (auth) =>
-          coordinator.handleMessages(
-            req,
-            res,
-            auth,
-            chat.parsed,
-            requestId,
-            sessionHint,
-            createChatWriterFactory({ includeUsage: chat.includeUsage }),
-          ));
+        const ref = { model: chat.parsed.model, fingerprint: "" };
+        await withTelemetry(req, res, ref, startedAt, () =>
+          runWithProviderRecovery(res, client, chat.parsed, sessionHint, (auth) => {
+            ref.fingerprint = auth.fingerprint;
+            return coordinator.handleMessages(
+              req,
+              res,
+              auth,
+              chat.parsed,
+              requestId,
+              sessionHint,
+              createChatWriterFactory({ includeUsage: chat.includeUsage }),
+            );
+          }));
         return;
       }
 
       if (method === "POST" && path === "/v1/responses") {
+        const startedAt = clock.now();
         const client = authorizeClient(req, config);
         const body = await readJsonBody(req, config.maxBodyBytes);
         if (body === undefined) throw invalidRequest("JSON body is required");
@@ -918,48 +1072,53 @@ export function createApp(input: {
           hostedSearchMode: config.runtimePolicy.hostedSearchMode,
         });
         const sessionHint = headerValue(req, "x-cursor-session-id");
-        if (responses.compaction.trigger) {
-          const auth = await resolveAuth(client, responses.parsed, sessionHint);
-          const minted = mintLocalCompact({
-            store: compactStore,
-            account: auth.fingerprint,
-            profile: runtimeProfileFor(req, client, auth),
-            parsed: responses,
-            sessionHint,
-          });
-          writeLocalCompactResponse({
-            res,
-            clock,
-            requestId,
-            stream: responses.parsed.stream,
-            model: responses.parsed.model,
-            token: minted.token,
-            compactId: minted.record.compactId,
-            sessionId: sessionHint,
-          });
-          return;
-        }
-        await runWithProviderRecovery(res, client, responses.parsed, sessionHint, (auth) => {
-          let hint = sessionHint;
-          if (responses.compaction.encryptedContent) {
-            const bound = bindCompactContinuation({
+        const ref = { model: responses.parsed.model, fingerprint: "" };
+        await withTelemetry(req, res, ref, startedAt, async () => {
+          if (responses.compaction.trigger) {
+            const auth = await resolveAuth(client, responses.parsed, sessionHint);
+            ref.fingerprint = auth.fingerprint;
+            const minted = mintLocalCompact({
               store: compactStore,
-              token: responses.compaction.encryptedContent,
               account: auth.fingerprint,
               profile: runtimeProfileFor(req, client, auth),
               parsed: responses,
+              sessionHint,
             });
-            hint = sessionHint ?? bound.sessionId;
+            writeLocalCompactResponse({
+              res,
+              clock,
+              requestId,
+              stream: responses.parsed.stream,
+              model: responses.parsed.model,
+              token: minted.token,
+              compactId: minted.record.compactId,
+              sessionId: sessionHint,
+            });
+            return;
           }
-          return coordinator.handleMessages(
-            req,
-            res,
-            auth,
-            responses.parsed,
-            requestId,
-            hint,
-            createResponsesWriterFactory(),
-          );
+          await runWithProviderRecovery(res, client, responses.parsed, sessionHint, (auth) => {
+            ref.fingerprint = auth.fingerprint;
+            let hint = sessionHint;
+            if (responses.compaction.encryptedContent) {
+              const bound = bindCompactContinuation({
+                store: compactStore,
+                token: responses.compaction.encryptedContent,
+                account: auth.fingerprint,
+                profile: runtimeProfileFor(req, client, auth),
+                parsed: responses,
+              });
+              hint = sessionHint ?? bound.sessionId;
+            }
+            return coordinator.handleMessages(
+              req,
+              res,
+              auth,
+              responses.parsed,
+              requestId,
+              hint,
+              createResponsesWriterFactory(),
+            );
+          });
         });
         return;
       }

@@ -159,9 +159,26 @@ export class CursorAccountFileStore {
     }));
   }
 
-  /** Set or clear this account's outbound proxy. */
+  /**
+   * Set or clear this account's outbound proxy.
+   *
+   * When `proxy` carries a URL but NO username and NO password, the account's
+   * existing stored credentials are preserved (merge). This lets the console
+   * edit just the proxy URL without wiping creds it can never read back. Pass
+   * `proxy: null` to clear everything, or supply username/password to replace.
+   */
   setProxy(id: string, proxy: ProxyCredentials | null): StoredCursorAccount | undefined {
-    return this.mutate(id, (account) => ({ ...account, proxy }));
+    return this.mutate(id, (account) => {
+      if (proxy && proxy.username === undefined && proxy.password === undefined && account.proxy) {
+        const merged: ProxyCredentials = {
+          url: proxy.url,
+          ...(account.proxy.username ? { username: account.proxy.username } : {}),
+          ...(account.proxy.password ? { password: account.proxy.password } : {}),
+        };
+        return { ...account, proxy: merged };
+      }
+      return { ...account, proxy };
+    });
   }
 
   /** Record or clear the last upstream failure. Diagnostic only. */

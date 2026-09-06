@@ -71,6 +71,34 @@ describe("account store v2", () => {
     expect(accounts.get(created.id)?.proxy).toBeNull();
   });
 
+  it("preserves stored proxy credentials on a url-only update", () => {
+    const accounts = store();
+    const created = accounts.add("key-gamma-2");
+    // Full set with credentials.
+    accounts.setProxy(created.id, {
+      url: "socks5://127.0.0.1:1080",
+      username: "u",
+      password: "p",
+    });
+    // URL-only edit (console cannot read creds back): creds must be preserved.
+    accounts.setProxy(created.id, { url: "http://proxy.internal:3128" });
+    expect(accounts.get(created.id)?.proxy).toEqual({
+      url: "http://proxy.internal:3128",
+      username: "u",
+      password: "p",
+    });
+    // Explicit replace overwrites creds.
+    accounts.setProxy(created.id, { url: "http://proxy.internal:3128", username: "u2", password: "p2" });
+    expect(accounts.get(created.id)?.proxy).toEqual({
+      url: "http://proxy.internal:3128",
+      username: "u2",
+      password: "p2",
+    });
+    // Null clears everything.
+    accounts.setProxy(created.id, null);
+    expect(accounts.get(created.id)?.proxy).toBeNull();
+  });
+
   it("records and clears a last error", () => {
     const accounts = store();
     const created = accounts.add("key-delta");

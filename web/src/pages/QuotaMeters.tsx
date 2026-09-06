@@ -1,3 +1,4 @@
+import { Meter } from "../bflabs/Meter";
 import {
   cursorUsedPercent,
   formatPercent,
@@ -39,55 +40,22 @@ export function QuotaPair({
 
   return (
     <div className="quota-pair">
-      <QuotaMeter
-        label={cursorLabel}
-        usedPercent={cursorUsed}
-        detail={cursorDetail}
-        missing={cursorMissing}
-      />
-      <QuotaMeter
-        label={grokLabel}
-        usedPercent={grokUsed}
-        detail={grokDetail}
-        missing={grokMissing}
-      />
-    </div>
-  );
-}
-
-function QuotaMeter({
-  label,
-  usedPercent,
-  detail,
-  missing,
-}: {
-  label: string;
-  usedPercent?: number;
-  detail?: string;
-  missing: string;
-}) {
-  const known = usedPercent !== undefined;
-  const width = known ? Math.min(100, Math.max(0, usedPercent)) : 0;
-  return (
-    <div className="quota-meter">
-      <div className="bf-progress">
-        <div className="bf-progress__meta">
-          <span>{label}</span>
-          <span>{known ? formatPercent(width) : ""}</span>
-        </div>
-        <div className="bf-progress__track">
-          <div
-            className="bf-progress__value"
-            style={{ width: known ? `${width}%` : "0%" }}
-            role="progressbar"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={known ? Math.round(width) : undefined}
-            aria-label={label}
-          />
-        </div>
+      <div className="quota-meter">
+        <Meter
+          label={cursorLabel}
+          used={cursorUsed ?? 0}
+          limit={cursorUsed !== undefined ? 100 : 0}
+          detail={cursorDetail || cursorMissing}
+        />
       </div>
-      <p className="quota-meter-detail">{detail || missing}</p>
+      <div className="quota-meter">
+        <Meter
+          label={grokLabel}
+          used={grokUsed ?? 0}
+          limit={grokUsed !== undefined ? 100 : 0}
+          detail={grokDetail || grokMissing}
+        />
+      </div>
     </div>
   );
 }

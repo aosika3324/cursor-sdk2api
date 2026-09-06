@@ -11,12 +11,14 @@ export function RailNav({
   accounts,
   connect,
   playground,
+  logs,
   settings,
   homeMeta,
   quotaMeta,
   accountsMeta,
   startMeta,
   playMeta,
+  logsMeta,
   settingsMeta,
   accountCount,
   icons,
@@ -29,15 +31,17 @@ export function RailNav({
   accounts: string;
   connect: string;
   playground: string;
+  logs: string;
   settings: string;
   homeMeta: string;
   quotaMeta: string;
   accountsMeta: string;
   startMeta: string;
   playMeta: string;
+  logsMeta: string;
   settingsMeta: string;
   accountCount: number;
-  icons: Record<"home" | "quota" | "key" | "start" | "play", ReactNode>;
+  icons: Record<"home" | "quota" | "key" | "start" | "play" | "logs", ReactNode>;
 }) {
   const navRef = useRef<HTMLElement>(null);
   const [bar, setBar] = useState({ top: 0, height: 0, ready: false });
@@ -65,7 +69,7 @@ export function RailNav({
       observer.disconnect();
       window.removeEventListener("resize", measure);
     };
-  }, [current, accountCount, home, quota, accounts, connect, playground]);
+  }, [current, accountCount, home, quota, accounts, connect, playground, logs]);
 
   return (
     <nav ref={navRef} className="rail-nav" aria-label="cursor-sdk2api">
@@ -87,6 +91,7 @@ export function RailNav({
           <a href={hrefFor("accounts")} title={accountsMeta} aria-current={current === "accounts" ? "page" : undefined}>{icons.key}{accounts}<small>{accountCount}</small></a>
           <a href={hrefFor("connect")} title={startMeta} aria-current={current === "connect" ? "page" : undefined}>{icons.start}{connect}</a>
           <a href={hrefFor("playground")} title={playMeta} aria-current={current === "playground" ? "page" : undefined}>{icons.play}{playground}</a>
+          <a href={hrefFor("logs")} title={logsMeta} aria-current={current === "logs" ? "page" : undefined}>{icons.logs}{logs}</a>
           <a href={hrefFor("settings")} title={settingsMeta} aria-current={current === "settings" ? "page" : undefined}>{icons.home}{settings}</a>
         </div>
       </div>

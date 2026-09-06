@@ -12,6 +12,8 @@
   --bf-color-sand: #f1ece3;
   --bf-color-pale-blue: #e8f1f7;
   --bf-color-signal-blue: #4c7faf;
+  --bf-color-danger: #c4412f;
+  --bf-color-danger-soft: color-mix(in srgb, var(--bf-color-danger) 12%, transparent);
 
   --bf-background: var(--bf-color-warm-white);
   --bf-surface: color-mix(in srgb, var(--bf-color-charcoal) 3%, transparent);

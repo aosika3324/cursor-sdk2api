@@ -1,16 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
 import { Button } from "../bflabs/Button";
 import { Card } from "../bflabs/Card";
+import { Checkbox } from "../bflabs/Checkbox";
+import { Input } from "../bflabs/Input";
 import { Notice } from "../bflabs/Notice";
+import { Select } from "../bflabs/Select";
 import { PageFrame } from "./shared";
-import {
-  getSettings,
-  getSettingsSchema,
-  updateSettings,
-  type RuntimeSettingsView,
-  type SettingsEffect,
-  type SettingsSchema,
-} from "../api";
+import { useI18n } from "../state/I18nContext";
+import { useSettings } from "../state/useSettings";
+import { type SettingsEffect } from "../api";
 
 export interface SettingsCopy {
   title: string;
@@ -40,69 +37,22 @@ const GROUPS: Array<{ effect: SettingsEffect }> = [
   { effect: "new_sessions" },
 ];
 
-export function SettingsPage({ t }: { t: SettingsCopy }) {
-  const [schema, setSchema] = useState<SettingsSchema | null>(null);
-  const [settings, setSettings] = useState<RuntimeSettingsView | null>(null);
-  const [draft, setDraft] = useState<Record<string, unknown>>({});
-  const [proxyDraft, setProxyDraft] = useState({ url: "", username: "", password: "" });
-  const [status, setStatus] = useState<"idle" | "saving" | "saved">("idle");
-  const [error, setError] = useState<string | null>(null);
-
-  const load = async () => {
-    setError(null);
-    try {
-      const [nextSchema, nextSettings] = await Promise.all([getSettingsSchema(), getSettings()]);
-      setSchema(nextSchema);
-      setSettings(nextSettings);
-      setDraft({});
-      setProxyDraft({ url: "", username: "", password: "" });
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    }
-  };
-
-  useEffect(() => {
-    void load();
-  }, []);
-
-  const dirty = useMemo(
-    () => Object.keys(draft).length > 0 || proxyDraft.url.trim() !== "",
-    [draft, proxyDraft.url],
-  );
-
-  const save = async () => {
-    setStatus("saving");
-    setError(null);
-    const patch: Record<string, unknown> = { ...draft };
-    if (proxyDraft.url.trim()) {
-      patch.globalProxy = {
-        url: proxyDraft.url.trim(),
-        ...(proxyDraft.username ? { username: proxyDraft.username } : {}),
-        ...(proxyDraft.password ? { password: proxyDraft.password } : {}),
-      };
-    }
-    try {
-      const next = await updateSettings(patch);
-      setSettings(next);
-      setDraft({});
-      setProxyDraft({ url: "", username: "", password: "" });
-      setStatus("saved");
-      window.setTimeout(() => setStatus("idle"), 2000);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-      setStatus("idle");
-    }
-  };
-
-  const clearProxy = async () => {
-    setError(null);
-    try {
-      setSettings(await updateSettings({ globalProxy: null }));
-      setProxyDraft({ url: "", username: "", password: "" });
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    }
-  };
+export function SettingsPage() {
+  const t = useI18n().t.settings;
+  const {
+    schema,
+    settings,
+    draft,
+    proxyDraft,
+    status,
+    error,
+    dirty,
+    setDraft,
+    setProxyDraft,
+    load,
+    save,
+    clearProxy,
+  } = useSettings();
 
   if (!schema || !settings) {
     return (
@@ -145,15 +95,14 @@ export function SettingsPage({ t }: { t: SettingsCopy }) {
                 <label key={field.key} className="settings-row">
                   <span className="settings-row__key">{field.key}</span>
                   {field.type === "boolean" ? (
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={Boolean(value(field.key))}
                       onChange={(event) =>
                         setDraft((prev) => ({ ...prev, [field.key]: event.target.checked }))
                       }
                     />
                   ) : field.type === "enum" ? (
-                    <select
+                    <Select
                       value={String(value(field.key) ?? "")}
                       onChange={(event) =>
                         setDraft((prev) => ({ ...prev, [field.key]: event.target.value }))
@@ -162,9 +111,9 @@ export function SettingsPage({ t }: { t: SettingsCopy }) {
                       {(field.values ?? []).map((option) => (
                         <option key={option} value={option}>{option}</option>
                       ))}
-                    </select>
+                    </Select>
                   ) : (
-                    <input
+                    <Input
                       type="number"
                       value={Number(value(field.key) ?? 0)}
                       min={field.min}
@@ -194,7 +143,7 @@ export function SettingsPage({ t }: { t: SettingsCopy }) {
         <div className="settings-grid">
           <label className="settings-row">
             <span className="settings-row__key">{t.proxyUrl}</span>
-            <input
+            <Input
               type="text"
               placeholder="socks5://127.0.0.1:1080"
               value={proxyDraft.url}
@@ -203,7 +152,7 @@ export function SettingsPage({ t }: { t: SettingsCopy }) {
           </label>
           <label className="settings-row">
             <span className="settings-row__key">{t.proxyUser}</span>
-            <input
+            <Input
               type="text"
               value={proxyDraft.username}
               onChange={(event) =>
@@ -213,7 +162,7 @@ export function SettingsPage({ t }: { t: SettingsCopy }) {
           </label>
           <label className="settings-row">
             <span className="settings-row__key">{t.proxyPassword}</span>
-            <input
+            <Input
               type="password"
               value={proxyDraft.password}
               onChange={(event) =>

@@ -1,558 +1,87 @@
 import { useEffect, useMemo, useState } from "react";
-import { addManagedAccount, batchManagedAccounts, getHealth, getManagedAccounts, probeManagedAccount, removeManagedAccount, runPrompt, setManagedAccountProxy, setManagedDefaultProfile, updateManagedAccount, verifyManagedAccount, onboardManagedAccount, type ManagementAccount } from "./api";
+import { runPrompt } from "./api";
 import { go, hrefFor, readRoute, type Route } from "./nav";
+import { sandSelectable } from "./quota";
 import { RailNav } from "./RailNav";
 import { AccountDetailPage } from "./pages/AccountDetailPage";
+import { AccountEditModal } from "./pages/AccountEditModal";
 import { AccountsPage } from "./pages/AccountsPage";
+import { ConfirmDialog } from "./pages/ConfirmDialog";
 import { ConnectPage } from "./pages/ConnectPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { QuotaDetail } from "./pages/QuotaDetail";
 import type { RecipeName } from "./recipes";
-import { HomePage, type HomeCopy } from "./pages/HomePage";
+import { HomePage } from "./pages/HomePage";
 import { PlaygroundPage } from "./pages/PlaygroundPage";
+import { LogsPage } from "./pages/LogsPage";
 import { QuotaPage } from "./pages/QuotaPage";
 import { BFTheme } from "./bflabs/BFTheme";
 import { Button } from "./bflabs/Button";
 import { StatusTag } from "./bflabs/StatusTag";
-import type { RosterItem } from "./roster";
-import type { HealthPayload, Protocol } from "./types";
+import type { Protocol } from "./types";
 import bfMarkUrl from "./assets/bf-mark.svg";
+import { I18nProvider, useI18n, type Copy } from "./state/I18nContext";
+import { AppStateProvider, useAppState } from "./state/AppStateContext";
+import { AuthProvider, useAuthContext } from "./state/AuthContext";
+import { LoginPage } from "./pages/LoginPage";
 
-type Language = "en" | "zh";
 type LoadState = "idle" | "loading" | "ready" | "error";
 
-const COPY = {
-  en: {
-    skip: "Skip to content",
-    brand: "BF Labs",
-    product: "cursor-sdk2api",
-    groupOperate: "General",
-    groupGateway: "Access",
-    navHome: "Home",
-    navStart: "Quick start",
-    navAccounts: "Accounts",
-    navQuota: "Quota",
-    navPlay: "Playground",
-    navSettings: "Settings",
-    navHomeMeta: "Runtime and API URLs",
-    navStartMeta: "Client recipes",
-    navAccountsMeta: "Persistent credentials",
-    navQuotaMeta: "Cursor dashboard usage",
-    navPlayMeta: "Messages / Chat / Responses",
-    navSettingsMeta: "Runtime configuration",
-    consoleTag: "Local console",
-    ready: "Ready",
-    unavailable: "Down",
-    loading: "Loading",
-    proxy: "Proxy",
-    direct: "Direct",
-    language: "中文",
-    dark: "Dark",
-    light: "Light",
-    source: "Source",
-    security: "Security",
-    home: {
-      kicker: "Runtime overview",
-      title: "Overview",
-      dashTitle: "Home",
-      status: "Run state",
-      net: "Network",
-      api: "Protocols",
-      version: "Version",
-      instance: "Instance",
-      runtime: "Runtime",
-      fleet: "Credentials",
-      controlTitle: "Runtime",
-      apiTitle: "API URL",
-      process: "Process",
-      processUp: "Up",
-      processDown: "Down",
-      refresh: "Refresh",
-      refreshing: "Refreshing",
-      firstKey: "First key",
-      noKey: "Add a Cursor key first",
-      localUrl: "Local URL",
-      reachable: "Reachable",
-      waitingLink: "Waiting",
-      messagesHint: "Claude Code · Messages",
-      chatHint: "OpenAI SDK · Chat Completions",
-      responsesHint: "Grok Build · Responses",
-      verdictGood: "Steady",
-      verdictWarn: "Needs attention",
-      verdictIdle: "Waiting for keys",
-      verdictOffline: "Waiting to connect",
-      verdictGoodBody: "Local gateway is ready. Quota uses Cursor Dashboard current-period data.",
-      verdictWarnBody: "At least one key failed its probe. Open Accounts to retest.",
-      verdictIdleBody: "Process is up. Open Accounts and add a Cursor key to start probing.",
-      verdictOfflineBody: "The console cannot reach /health on this origin.",
-      nextKicker: "Next",
-      nextTitle: "Where to go next",
-      nextQuota: "Quota",
-      nextQuotaDesc: "Totals first, then each account returned by Cursor Dashboard.",
-      nextAuth: "Accounts",
-      nextAuthDesc: "Add, probe, and remove persistent Cursor credentials.",
-      nextPlay: "Playground",
-      nextPlayDesc: "Send one Messages, Chat, or Responses request through the gateway.",
-      nextStart: "Quick start",
-      nextStartDesc: "Copy the local origin and client recipes.",
-      quickStart: "Quick start",
-      quotaPageKicker: "Total then detail",
-      quotaPageTitle: "Quota",
-      quotaDesc: "Cursor quota and Grok Bot quota are listed separately for the same User API Key.",
-      manage: "Accounts",
-      authTitle: "Accounts",
-      authMeta: "{total} credentials · {ok} probed · {bad} failed",
-      tryPlay: "Playground",
-      origin: "Gateway",
-      copy: "Copy",
-      copied: "Copied",
-      totalAccounts: "Accounts",
-      tested: "Tested",
-      failed: "failed",
-      quotaKnown: "Quota returned",
-      quotaHint: "Cursor quota and Grok Bot quota stay separate.",
-      fableOnShort: "on",
-      fableOffShort: "off",
-      breakdown: "Per account",
-      testAll: "Test all",
-      noAccounts: "No persistent Cursor accounts yet.",
-      quotaMissing: "Not returned",
-      cursorQuota: "Cursor quota",
-      grokBotQuota: "Grok Bot quota",
-      grokBotMissing: "Not returned",
-      remainingPrefix: "{n} left",
-      resetPrefix: "Resets",
-      runtimeSdk: "SDK",
-      runtimeSand: "Sand",
-      runtimeHint: "Applies to new sessions only.",
-      runtimeSandOff: "Sand is available after Grok Bot access is granted.",
-      fableOn: "On",
-      fableOff: "Off",
-      fableUnknown: "Untested",
-      testing: "Testing",
-      test: "Test",
-      testFail: "Failed",
-      open: "Open",
-      headers: ["Account", "Quota", "Fable 5", "Probe"] as [string, string, string, string],
-      add: "Add",
-      adding: "Adding",
-      keyPlaceholder: "Cursor API key",
-      keyHelp: "Stored by the gateway in STATE_DIR/auths with owner-only file permissions.",
-      remove: "Remove",
-    },
-    detail: {
-      missing: "Account not found",
-      back: "All accounts",
-      test: "Test",
-      testing: "Testing",
-      use: "Use in playground",
-      quota: "Quota",
-      quotaMissing: "Cursor quota unavailable",
-      quotaOpen: "Open Cursor usage",
-      cursorQuota: "Cursor quota",
-      grokBotQuota: "Grok Bot quota",
-      grokBotMissing: "Grok Bot quota unavailable",
-      remainingPrefix: "{n} left",
-      resetPrefix: "Resets",
-      runtime: "Runtime",
-      runtimeSdk: "SDK",
-      runtimeSand: "Sand",
-      runtimeHint: "Applies to new sessions only.",
-      runtimeSandOff: "Sand is available after Grok Bot access is granted.",
-      profileError: "Could not save runtime.",
-      fableOn: "In catalog",
-      fableOff: "Not enabled",
-      fableUnknown: "Untested",
-      fableHelp: "Privacy Mode and Team accounts must approve Fable 5 data retention in the Cursor Dashboard before the model appears.",
-      fableOpen: "Enable Fable 5 in Cursor",
-      fableDocs: "Docs",
-      models: "Catalog",
-      noModels: "Official catalog returned no models.",
-      cursorUsage: "https://cursor.com/dashboard",
-    },
-    play: {
-      title: "Protocol playground",
-      pick: "Account",
-      prompt: "Prompt",
-      send: "Send",
-      sending: "Sending",
-      stream: "Stream",
-      events: "Event output",
-      emptyOutput: "Send a request to inspect the protocol response.",
-      waiting: "Add an account first",
-      accounts: "Go to accounts",
-    },
-    connect: {
-      title: "Quick start",
-      origin: "Gateway",
-      copy: "Copy",
-      copied: "Copied",
-      recipes: "Client recipes",
-      routeTitle: "Client to endpoint",
-      routeClient: "Client",
-      routeEndpoint: "Endpoint",
-      routeNote: "Why",
-      workspaceTitle: "Local files",
-      workspaceBody:
-        "Grok Build and Claude Code edit files with their own local tools in your project directory. This gateway only runs the model. Cursor SDK uses an empty workspace, so the model may emit that absolute path. Use a relative path or your project path.",
-    },
-    accountAdmin: {
-      edit: "Edit",
-      proxy: "Proxy",
-      verify: "Verify",
-      enable: "Enable",
-      disable: "Disable",
-      disabledTag: "Disabled",
-      priority: "P",
-      proxyDirect: "direct",
-      selected: "{n} selected",
-      batchEnable: "Enable",
-      batchDisable: "Disable",
-      batchDelete: "Delete",
-      batchPriority: "Set priority",
-      batchConfirmDelete: "Delete {n} account(s)? This cannot be undone.",
-      clearSelection: "Clear",
-      labelPrompt: "Label for this account",
-      notePrompt: "Note",
-      priorityPrompt: "Priority (0-1000, lower is preferred)",
-      proxyPrompt: "Proxy URL (http, https, or socks5). Leave empty to clear.",
-      proxyClearHint: "Empty clears the proxy.",
-      quota: "Quota",
-      moveUp: "Raise priority",
-      moveDown: "Lower priority",
-      available: "Available",
-      botWithQuota: "Bot (quota left)",
-      botFull: "Bot (plan full)",
-      botOff: "Bot off",
-      planPercent: "Plan {p}%",
-      badgeFableOn: "F5",
-      badgeFableOff: "F5 ×",
-      importKey: "API Key",
-      importToken: "Session token",
-      tokenPlaceholder: "user_...::<session token>",
-      tokenHelp: "The gateway exchanges this browser session token for a crsr_ API key, then discards the token. It is never stored. A closed account cannot mint a key.",
-      grantFable5: "Enable Fable 5",
-      claimSand: "Claim Bot quota",
-      onboarding: "Exchanging",
-    },
-    quotaDetail: {
-      title: "Quota",
-      close: "Close",
-      botChannel: "Bot channel",
-      botAvailable: "available",
-      botUnavailable: "unavailable",
-      grokBotPlan: "Grok Bot Plan",
-      cursorModels: "Cursor Models (Grok/Composer)",
-      otherModels: "Other Models (Claude/GPT/Gemini)",
-      autoModels: "Auto Models",
-      totalUsage: "Total usage",
-      periodSpend: "This period",
-      included: "included",
-      resetPrefix: "Resets",
-      unavailable: "Cursor returned no usage for this key.",
-      byModel: "Spend by model",
-      byModelPending: "Cursor's per-model breakdown is not wired up yet.",
-    },
-    keyNeeded: "Paste a Cursor API key first.",
-    settings: {
-      title: "System settings",
-      kicker: "Runtime",
-      hot: "Applies immediately",
-      hotHint: "Saved to $STATE_DIR/config.json and in effect at once. Running requests are not interrupted.",
-      newSessions: "Applies to new sessions",
-      newSessionsHint: "A live Cursor Agent keeps the value it was created with. Existing sessions are unaffected.",
-      restart: "Requires a restart",
-      restartHint: "Read-only here. These are fixed when the process starts; change them in the environment and restart the container.",
-      save: "Save",
-      saving: "Saving",
-      saved: "Saved",
-      reload: "Reload",
-      seeded: "Seeded from environment on first start. This file is now authoritative, so environment changes no longer override it.",
-      proxyUrl: "Proxy URL",
-      proxyUser: "Username",
-      proxyPassword: "Password",
-      proxyClear: "Clear proxy",
-      proxyConfigured: "Configured",
-      proxyNone: "Direct connection",
-      proxySecretHidden: "Stored credentials are never returned to the browser. Re-enter them to change the proxy.",
-    },
-  },
-  zh: {
-    skip: "跳到主要内容",
-    brand: "BF Labs",
-    product: "cursor-sdk2api",
-    groupOperate: "通用",
-    groupGateway: "接入",
-    navHome: "首页",
-    navStart: "快速开始",
-    navAccounts: "账号",
-    navQuota: "配额",
-    navPlay: "协议试跑",
-    navSettings: "系统设置",
-    navHomeMeta: "运行控制和 API 地址",
-    navStartMeta: "客户端配方",
-    navAccountsMeta: "持久化凭证",
-    navQuotaMeta: "官方限额",
-    navPlayMeta: "Messages / Chat / Responses",
-    navSettingsMeta: "运行时配置",
-    consoleTag: "本机控制台",
-    ready: "就绪",
-    unavailable: "不可用",
-    loading: "加载中",
-    proxy: "代理",
-    direct: "直连",
-    language: "EN",
-    dark: "深色",
-    light: "浅色",
-    source: "源码",
-    security: "安全",
-    home: {
-      kicker: "运行总览",
-      title: "概览",
-      dashTitle: "首页",
-      status: "运行状态",
-      net: "网络",
-      api: "协议",
-      version: "版本",
-      instance: "实例",
-      runtime: "运行配置",
-      fleet: "凭证状态",
-      controlTitle: "运行控制",
-      apiTitle: "API URL",
-      process: "进程",
-      processUp: "已启动",
-      processDown: "未连接",
-      refresh: "刷新状态",
-      refreshing: "刷新中",
-      firstKey: "第一个密钥",
-      noKey: "先加入一把 Cursor Key",
-      localUrl: "本机 URL",
-      reachable: "可连接",
-      waitingLink: "等待连接",
-      messagesHint: "Claude Code · Messages",
-      chatHint: "OpenAI SDK · Chat Completions",
-      responsesHint: "Grok Build · Responses",
-      verdictGood: "运行平稳",
-      verdictWarn: "需要留意",
-      verdictIdle: "静候账号",
-      verdictOffline: "等待连接",
-      verdictGoodBody: "本机网关已就绪。额度来自 Cursor Dashboard 当前周期。",
-      verdictWarnBody: "至少一把 Key 测通失败。去账号页重测。",
-      verdictIdleBody: "进程已起来。去账号页加入 Cursor Key 即可测通。",
-      verdictOfflineBody: "控制台连不上这个 origin 的 /health。",
-      nextKicker: "下一步",
-      nextTitle: "接下来去哪里",
-      nextQuota: "配额",
-      nextQuotaDesc: "先看合计，再看 Cursor Dashboard 返回的每个账号。",
-      nextAuth: "账号",
-      nextAuthDesc: "加入、测通、移除服务端持久化的 Cursor Key。",
-      nextPlay: "协议试跑",
-      nextPlayDesc: "用 Messages / Chat / Responses 打一条真实请求。",
-      nextStart: "快速开始",
-      nextStartDesc: "复制本机 origin 和客户端配方。",
-      quickStart: "快速开始",
-      quotaPageKicker: "先总后分",
-      quotaPageTitle: "配额",
-      quotaDesc: "同一把 User API Key 下，Cursor 额度和 Grok Bot 额度分开列出。",
-      manage: "账号",
-      authTitle: "账号",
-      authMeta: "{total} 个凭证 · {ok} 个测通 · {bad} 个异常",
-      tryPlay: "协议试跑",
-      origin: "本机网关",
-      copy: "复制",
-      copied: "已复制",
-      totalAccounts: "账号",
-      tested: "已测通",
-      failed: "失败",
-      quotaKnown: "额度已返回",
-      quotaHint: "Cursor 额度和 Grok Bot 额度各算各的。",
-      fableOnShort: "已开",
-      fableOffShort: "未开",
-      breakdown: "分账号",
-      testAll: "全部测通",
-      noAccounts: "还没有持久化的 Cursor 账号。",
-      quotaMissing: "未返回",
-      cursorQuota: "Cursor 额度",
-      grokBotQuota: "Grok Bot 额度",
-      grokBotMissing: "未返回",
-      remainingPrefix: "剩余 {n}",
-      resetPrefix: "重置",
-      runtimeSdk: "SDK",
-      runtimeSand: "Sand",
-      runtimeHint: "只对新会话生效。",
-      runtimeSandOff: "开通 Grok Bot 额度后才能选用 Sand。",
-      fableOn: "已开",
-      fableOff: "未开",
-      fableUnknown: "未测",
-      testing: "测试中",
-      test: "测试",
-      testFail: "失败",
-      open: "打开",
-      headers: ["账号", "额度", "Fable 5", "测通"] as [string, string, string, string],
-      add: "加入",
-      adding: "加入中",
-      keyPlaceholder: "Cursor API Key",
-      keyHelp: "账号由网关写入 STATE_DIR/auths，并使用仅属主可读写的文件权限。",
-      remove: "移除",
-    },
-    detail: {
-      missing: "找不到这个账号",
-      back: "全部账号",
-      test: "测试",
-      testing: "测试中",
-      use: "去试跑",
-      quota: "额度",
-      quotaMissing: "Cursor 额度不可用",
-      quotaOpen: "打开 Cursor 用量",
-      cursorQuota: "Cursor 额度",
-      grokBotQuota: "Grok Bot 额度",
-      grokBotMissing: "Grok Bot 额度不可用",
-      remainingPrefix: "剩余 {n}",
-      resetPrefix: "重置",
-      runtime: "运行方式",
-      runtimeSdk: "SDK",
-      runtimeSand: "Sand",
-      runtimeHint: "只对新会话生效。",
-      runtimeSandOff: "开通 Grok Bot 额度后才能选用 Sand。",
-      profileError: "运行方式没有保存成功。",
-      fableOn: "目录已含",
-      fableOff: "未开启",
-      fableUnknown: "未检测",
-      fableHelp: "若账号开了 Privacy Mode，或属于 Team / Enterprise，需要先在 Cursor Dashboard 批准 Fable 5 数据保留政策，模型才会出现在官方目录。",
-      fableOpen: "去 Cursor 打开 Fable 5",
-      fableDocs: "说明",
-      models: "模型目录",
-      noModels: "官方目录没有返回模型。",
-      cursorUsage: "https://cursor.com/dashboard",
-    },
-    play: {
-      title: "协议试跑",
-      pick: "账号",
-      prompt: "提示词",
-      send: "发送",
-      sending: "发送中",
-      stream: "流式",
-      events: "事件输出",
-      emptyOutput: "发送请求后在这里查看协议响应。",
-      waiting: "先加入账号",
-      accounts: "去账号页",
-    },
-    connect: {
-      title: "快速开始",
-      origin: "本机网关",
-      copy: "复制",
-      copied: "已复制",
-      recipes: "连接配方",
-      routeTitle: "客户端对应端点",
-      routeClient: "客户端",
-      routeEndpoint: "端点",
-      routeNote: "说明",
-      workspaceTitle: "本地文件",
-      workspaceBody:
-        "Grok Build / Claude Code 改文件用的是它们自己的本机工具，工作区是你的项目目录。这个网关只提供模型推理。Cursor SDK 的 cwd 是空目录，所以模型有时会吐出网关绝对路径。写相对路径或你的项目路径就能改本地文件。",
-    },
-    accountAdmin: {
-      edit: "编辑资料",
-      proxy: "代理",
-      verify: "真实探测",
-      enable: "启用",
-      disable: "禁用",
-      disabledTag: "已禁用",
-      priority: "优先级",
-      proxyDirect: "直连",
-      selected: "已选 {n} 个",
-      batchEnable: "批量启用",
-      batchDisable: "批量禁用",
-      batchDelete: "批量删除",
-      batchPriority: "设置优先级",
-      batchConfirmDelete: "确认删除 {n} 个账号？此操作不可撤销。",
-      clearSelection: "取消选择",
-      labelPrompt: "该账号的备注名",
-      notePrompt: "备注",
-      priorityPrompt: "优先级（0-1000，越小越优先）",
-      proxyPrompt: "代理地址（http / https / socks5）。留空则清除。",
-      proxyClearHint: "留空即清除代理。",
-      quota: "额度",
-      moveUp: "上调优先级",
-      moveDown: "下调优先级",
-      available: "可用",
-      botWithQuota: "Bot(有额度)",
-      botFull: "Bot(套餐已满)",
-      botOff: "Bot 未开",
-      planPercent: "套餐 {p}%",
-      badgeFableOn: "F5",
-      badgeFableOff: "F5 ×",
-      importKey: "API Key",
-      importToken: "会话令牌",
-      tokenPlaceholder: "user_...::<会话令牌>",
-      tokenHelp: "网关用这把浏览器会话令牌换取 crsr_ API Key，随即丢弃令牌，绝不存储。被封账号换不出 Key。",
-      grantFable5: "同时开通 Fable 5",
-      claimSand: "同时领取 Bot 额度",
-      onboarding: "换取中",
-    },
-    quotaDetail: {
-      title: "额度",
-      close: "关闭",
-      botChannel: "Bot 通道",
-      botAvailable: "可用",
-      botUnavailable: "不可用",
-      grokBotPlan: "Grok Bot Plan",
-      cursorModels: "Cursor Models（Grok/Composer）",
-      otherModels: "Other Models（Claude/GPT/Gemini）",
-      autoModels: "Auto 额度",
-      totalUsage: "总用量",
-      periodSpend: "本周期消费",
-      included: "含额",
-      resetPrefix: "重置",
-      unavailable: "Cursor 未返回该 Key 的用量。",
-      byModel: "按模型消费",
-      byModelPending: "Cursor 的按模型明细尚未接入。",
-    },
-    keyNeeded: "先粘贴一把 Cursor Key。",
-    settings: {
-      title: "系统设置",
-      kicker: "运行时",
-      hot: "立即生效",
-      hotHint: "保存到 $STATE_DIR/config.json 并立刻生效。不会打断正在进行的请求。",
-      newSessions: "仅新会话生效",
-      newSessionsHint: "已建立的 Cursor Agent 保持创建时的取值，现有会话不受影响。",
-      restart: "需要重启",
-      restartHint: "此处只读。这些值在进程启动时固定，需改环境变量并重启容器。",
-      save: "保存",
-      saving: "保存中",
-      saved: "已保存",
-      reload: "重新读取",
-      seeded: "首次启动时从环境变量播种。现在以此文件为准，环境变量不再覆盖。",
-      proxyUrl: "代理地址",
-      proxyUser: "用户名",
-      proxyPassword: "密码",
-      proxyClear: "清除代理",
-      proxyConfigured: "已配置",
-      proxyNone: "直连",
-      proxySecretHidden: "已存的凭据不会回传浏览器。要更改请重新填写。",
-    },
-  },
-} as const;
-
-function initialLanguage(): Language {
-  return navigator.language.toLowerCase().startsWith("zh") ? "zh" : "en";
+export function App() {
+  return (
+    <I18nProvider>
+      <AuthProvider>
+        <AuthGate />
+      </AuthProvider>
+    </I18nProvider>
+  );
 }
 
-export function App() {
-  const [language, setLanguage] = useState<Language>(initialLanguage);
+function AuthGate() {
+  const { authenticated, checkedSession, authEnforced } = useAuthContext();
+  if (!checkedSession) return null;
+  if (authEnforced && !authenticated) return <LoginPage />;
+  return (
+    <AppStateProvider>
+      <AppInner />
+    </AppStateProvider>
+  );
+}
+
+function AppInner() {
+  const { lang: language, setLang: setLanguage, t } = useI18n();
+  const {
+    health,
+    healthError,
+    refreshingHealth,
+    refreshHealth,
+    roster,
+    activeId,
+    active,
+    selectedModel,
+    draftKey,
+    addError,
+    adding,
+    profileError,
+    setActiveId,
+    setSelectedModel,
+    setDraftKey,
+    testAccount,
+    testAll,
+    addAccount,
+    onboardAccount,
+    removeAccount,
+    editAccount,
+    editProxy,
+    moveAccount,
+    setAccountDisabled,
+    verifyAccount,
+    runBatch,
+    setAccountProfile,
+  } = useAppState();
   const [tone, setTone] = useState<"light" | "dark">("light");
   const [route, setRoute] = useState<Route>(readRoute);
-  const [health, setHealth] = useState<HealthPayload>();
-  const [healthError, setHealthError] = useState("");
-  const [refreshingHealth, setRefreshingHealth] = useState(false);
-  const [roster, setRoster] = useState<RosterItem[]>([]);
-  const [draftKey, setDraftKey] = useState("");
-  const [addError, setAddError] = useState("");
-  const [adding, setAdding] = useState(false);
-  const [activeId, setActiveId] = useState("");
   const [protocol, setProtocol] = useState<Protocol>("messages");
-  const [selectedModel, setSelectedModel] = useState("");
-  const [profileError, setProfileError] = useState("");
   const [prompt, setPrompt] = useState("Reply with a short status check for this gateway.");
   const [stream, setStream] = useState(true);
   const [output, setOutput] = useState("");
@@ -560,9 +89,9 @@ export function App() {
   const [recipe, setRecipe] = useState<RecipeName>("claude");
   const [copied, setCopied] = useState("");
   const [quotaFor, setQuotaFor] = useState("");
-  const t = COPY[language];
+  const [editId, setEditId] = useState("");
+  const [removeId, setRemoveId] = useState("");
   const origin = window.location.origin;
-  const active = roster.find((item) => item.id === activeId);
 
   useEffect(() => {
     const onHash = () => setRoute(readRoute());
@@ -570,30 +99,10 @@ export function App() {
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
 
-  const refreshHealth = async () => {
-    setRefreshingHealth(true);
-    try {
-      setHealth(await getHealth());
-      setHealthError("");
-    } catch (error: unknown) {
-      setHealthError(messageOf(error));
-    } finally {
-      setRefreshingHealth(false);
-    }
-  };
-
-  useEffect(() => {
-    void refreshHealth();
-  }, []);
-
   useEffect(() => {
     document.documentElement.lang = language === "zh" ? "zh-CN" : "en";
     document.title = `${t.product} · ${pageLabelFor(route.page, t)}`;
   }, [language, route.page, t]);
-
-  useEffect(() => {
-    if (!selectedModel && active?.models?.data[0]?.id) setSelectedModel(active.models.data[0].id);
-  }, [active, selectedModel]);
 
   const protocolSummary = useMemo(() => {
     if (!health) return "…";
@@ -622,275 +131,6 @@ export function App() {
         { client: "OpenAI SDK", endpoint: "POST /v1/chat/completions", note: "Point base_url at /v1." },
         { client: "new-api", endpoint: "/v1/messages or /v1/chat/completions", note: "Pick Anthropic or OpenAI to match the upstream type." },
       ];
-
-  const patchRoster = (id: string, patch: Partial<RosterItem>) => {
-    setRoster((current) => {
-      const index = current.findIndex((item) => item.id === id);
-      if (index === -1) return current;
-      return current.map((item) => (item.id === id ? { ...item, ...patch } : item));
-    });
-  };
-
-  const loadAccounts = async () => {
-    try {
-      const accounts = await getManagedAccounts();
-      const next = accounts.map((account): RosterItem => ({
-        id: account.id,
-        keyHint: account.key_hint,
-        addedAt: account.added_at,
-        testState: "idle",
-        label: account.label ?? "",
-        disabled: account.disabled ?? false,
-        priority: account.priority ?? 100,
-        note: account.note ?? "",
-        proxy: account.proxy,
-        lastError: account.last_error ?? null,
-      }));
-      setRoster(next);
-      setActiveId((current) => next.some((item) => item.id === current) ? current : next[0]?.id ?? "");
-      await Promise.all(next.map((item) => probe(item.id)));
-    } catch (error) {
-      setAddError(messageOf(error));
-      setRoster([]);
-    }
-  };
-
-  useEffect(() => {
-    void loadAccounts();
-  }, []);
-
-  const probe = async (id: string) => {
-    const started = performance.now();
-    patchRoster(id, { testState: "testing", testError: undefined });
-    try {
-      const { models: nextModels, account: nextAccount } = await probeManagedAccount(id);
-      patchRoster(id, {
-        testState: "pass",
-        testMs: Math.round(performance.now() - started),
-        models: nextModels,
-        account: nextAccount,
-        testError: undefined,
-      });
-      setSelectedModel((current) => current || nextModels.data[0]?.id || "");
-    } catch (error) {
-      patchRoster(id, {
-        testState: "fail",
-        testMs: Math.round(performance.now() - started),
-        testError: messageOf(error),
-      });
-    }
-  };
-
-  const testAccount = async (id: string) => {
-    const item = roster.find((entry) => entry.id === id);
-    if (!item) return;
-    await probe(item.id);
-  };
-
-  const testAll = async () => {
-    await Promise.all(roster.map((item) => probe(item.id)));
-  };
-
-  const addAccount = async () => {
-    const key = draftKey.trim();
-    if (!key) {
-      setAddError(t.keyNeeded);
-      return;
-    }
-    setAdding(true);
-    setAddError("");
-    try {
-      const account = await addManagedAccount(key);
-      const next: RosterItem = { id: account.id, keyHint: account.key_hint, addedAt: account.added_at, testState: "testing" };
-      setRoster((current) => current.some((item) => item.id === next.id) ? current : [...current, next]);
-      setActiveId(next.id);
-      setDraftKey("");
-      await probe(next.id);
-    } catch (error) {
-      setAddError(messageOf(error));
-    } finally {
-      setAdding(false);
-    }
-  };
-
-  const onboardAccount = async (sessionToken: string, grantFable5: boolean, claimSand: boolean) => {
-    setAdding(true);
-    setAddError("");
-    try {
-      const result = await onboardManagedAccount({ sessionToken, grantFable5, claimSand });
-      const account = result.account;
-      const next: RosterItem = {
-        id: account.id,
-        keyHint: account.key_hint,
-        addedAt: account.added_at,
-        testState: "testing",
-      };
-      setRoster((current) => (current.some((item) => item.id === next.id) ? current : [...current, next]));
-      setActiveId(next.id);
-      await probe(next.id);
-    } catch (error) {
-      setAddError(messageOf(error));
-    } finally {
-      setAdding(false);
-    }
-  };
-
-  const removeAccount = async (id: string) => {
-    try {
-      await removeManagedAccount(id);
-    } catch (error) {
-      setAddError(messageOf(error));
-      return;
-    }
-    setRoster((current) => {
-      const next = current.filter((item) => item.id !== id);
-      if (id === activeId) {
-        setActiveId(next[0]?.id ?? "");
-        setSelectedModel("");
-      }
-      return next;
-    });
-    if (route.accountId === id) go("accounts");
-  };
-
-  const applyAccount = (account: ManagementAccount) => {
-    patchRoster(account.id, {
-      label: account.label ?? "",
-      disabled: account.disabled ?? false,
-      priority: account.priority ?? 100,
-      note: account.note ?? "",
-      proxy: account.proxy,
-      lastError: account.last_error ?? null,
-    });
-  };
-
-  const editAccount = async (id: string) => {
-    const item = roster.find((entry) => entry.id === id);
-    const label = window.prompt(t.accountAdmin.labelPrompt, item?.label ?? "");
-    if (label == null) return;
-    const note = window.prompt(t.accountAdmin.notePrompt, item?.note ?? "");
-    if (note == null) return;
-    const rawPriority = window.prompt(t.accountAdmin.priorityPrompt, String(item?.priority ?? 100));
-    if (rawPriority == null) return;
-    const priority = Number.parseInt(rawPriority, 10);
-    if (!Number.isInteger(priority)) return;
-    setAddError("");
-    try {
-      applyAccount(await updateManagedAccount(id, { label, note, priority }));
-    } catch (error) {
-      setAddError(messageOf(error));
-    }
-  };
-
-  const editProxy = async (id: string) => {
-    const item = roster.find((entry) => entry.id === id);
-    const current = item?.proxy?.configured ? `${item.proxy.scheme}://${item.proxy.host}` : "";
-    const url = window.prompt(t.accountAdmin.proxyPrompt, current);
-    if (url == null) return;
-    setAddError("");
-    try {
-      if (!url.trim()) {
-        applyAccount(await setManagedAccountProxy(id, null));
-        return;
-      }
-      const username = window.prompt(t.settings.proxyUser, "") ?? "";
-      const password = window.prompt(t.settings.proxyPassword, "") ?? "";
-      applyAccount(
-        await setManagedAccountProxy(id, {
-          url: url.trim(),
-          ...(username ? { username } : {}),
-          ...(password ? { password } : {}),
-        }),
-      );
-    } catch (error) {
-      setAddError(messageOf(error));
-    }
-  };
-
-  const moveAccount = async (id: string, direction: "up" | "down") => {    // The table is ordered by priority, so swapping with the neighbour's
-    // priority is what "move up/down" means. Equal priorities are spread first
-    // so a swap has something to exchange.
-    const ordered = [...roster].sort(
-      (left, right) => (left.priority ?? 100) - (right.priority ?? 100) || left.addedAt - right.addedAt,
-    );
-    const index = ordered.findIndex((item) => item.id === id);
-    const target = direction === "up" ? index - 1 : index + 1;
-    if (index < 0 || target < 0 || target >= ordered.length) return;
-    setAddError("");
-    try {
-      const self = ordered[index]!;
-      const other = ordered[target]!;
-      const selfPriority = self.priority ?? 100;
-      const otherPriority = other.priority ?? 100;
-      if (selfPriority === otherPriority) {
-        // Same tier: nudge this row past the neighbour instead of a no-op swap.
-        const shifted = direction === "up" ? selfPriority - 1 : selfPriority + 1;
-        const clamped = Math.min(1000, Math.max(0, shifted));
-        applyAccount(await updateManagedAccount(id, { priority: clamped }));
-        return;
-      }
-      const [first, second] = await Promise.all([
-        updateManagedAccount(self.id, { priority: otherPriority }),
-        updateManagedAccount(other.id, { priority: selfPriority }),
-      ]);
-      applyAccount(first);
-      applyAccount(second);
-    } catch (error) {
-      setAddError(messageOf(error));
-    }
-  };
-
-  const setAccountDisabled = async (id: string, disabled: boolean) => {    setAddError("");
-    try {
-      applyAccount(await updateManagedAccount(id, { disabled }));
-    } catch (error) {
-      setAddError(messageOf(error));
-    }
-  };
-
-  const verifyAccount = async (id: string) => {
-    setAddError("");
-    patchRoster(id, { testState: "testing" });
-    try {
-      const result = await verifyManagedAccount(id);
-      applyAccount(result.account);
-      patchRoster(id, {
-        account: result.detail,
-        testState: result.usable ? "pass" : "fail",
-        testError: result.usable ? undefined : result.account.last_error?.reason,
-      });
-    } catch (error) {
-      patchRoster(id, { testState: "fail", testError: messageOf(error) });
-    }
-  };
-
-  const runBatch = async (input: {
-    ids: string[];
-    action: "enable" | "disable" | "delete" | "priority";
-    priority?: number;
-  }) => {    setAddError("");
-    try {
-      const results = await batchManagedAccounts(input);
-      const failures = results.filter((result) => !result.ok);
-      if (failures.length > 0) {
-        setAddError(`${failures.length} / ${results.length} failed`);
-      }
-      // The batch may have deleted or changed many rows; refetch for truth.
-      await loadAccounts();
-    } catch (error) {
-      setAddError(messageOf(error));
-    }
-  };
-
-  const setAccountProfile = async (id: string, profile: "sdk" | "sand") => {
-    setProfileError("");
-    try {
-      const account = await setManagedDefaultProfile(id, profile);
-      patchRoster(id, { account });
-    } catch (error) {
-      setProfileError(messageOf(error) || t.detail.profileError);
-    }
-  };
 
   const run = async () => {
     if (!active || !selectedModel || !prompt.trim()) return;
@@ -923,7 +163,6 @@ export function App() {
   };
 
   const healthOk = health?.status === "ok";
-  const homeCopy = t.home as unknown as HomeCopy & { add: string; adding: string; keyPlaceholder: string; keyHelp: string; remove: string };
 
   const pageLabel = pageLabelFor(route.page, t);
 
@@ -947,12 +186,14 @@ export function App() {
           accounts={t.navAccounts}
           connect={t.navStart}
           playground={t.navPlay}
+          logs={t.navLogs}
           settings={t.navSettings}
           homeMeta={t.navHomeMeta}
           quotaMeta={t.navQuotaMeta}
           accountsMeta={t.navAccountsMeta}
           startMeta={t.navStartMeta}
           playMeta={t.navPlayMeta}
+          logsMeta={t.navLogsMeta}
           settingsMeta={t.navSettingsMeta}
           accountCount={roster.length}
           icons={{
@@ -961,6 +202,7 @@ export function App() {
             key: <NavIcon name="key" />,
             start: <NavIcon name="start" />,
             play: <NavIcon name="play" />,
+            logs: <NavIcon name="logs" />,
           }}
         />
         <div className="rail-foot">
@@ -985,7 +227,6 @@ export function App() {
       <main id="main-content">
         {route.page === "home" ? (
           <HomePage
-            t={homeCopy}
             origin={origin}
             copied={copied}
             ready={healthOk ? t.ready : healthError ? t.unavailable : t.loading}
@@ -1001,12 +242,10 @@ export function App() {
           />
         ) : null}
         {route.page === "quota" ? (
-          <QuotaPage t={homeCopy} roster={roster} onTest={(id) => void testAccount(id)} onTestAll={() => void testAll()} />
+          <QuotaPage roster={roster} onTest={(id) => void testAccount(id)} onTestAll={() => void testAll()} />
         ) : null}
         {route.page === "accounts" ? (
           <AccountsPage
-            t={homeCopy}
-            admin={t.accountAdmin}
             draftKey={draftKey}
             addError={addError}
             adding={adding}
@@ -1014,9 +253,9 @@ export function App() {
             onDraft={setDraftKey}
             onAdd={() => void addAccount()}
             onTest={(id) => void testAccount(id)}
-            onRemove={(id) => void removeAccount(id)}
-            onEdit={(id) => void editAccount(id)}
-            onProxy={(id) => void editProxy(id)}
+            onRemove={(id) => setRemoveId(id)}
+            onEdit={(id) => setEditId(id)}
+            onProxy={(id) => setEditId(id)}
             onVerify={(id) => void verifyAccount(id)}
             onDisable={(id, disabled) => void setAccountDisabled(id, disabled)}
             onBatch={(input) => void runBatch(input)}
@@ -1028,20 +267,19 @@ export function App() {
         ) : null}
         {route.page === "account" ? (
           <AccountDetailPage
-            t={t.detail}
             item={roster.find((item) => item.id === route.accountId)}
             onTest={(id) => void testAccount(id)}
             onUse={(id) => {
               setActiveId(id);
               go("playground");
             }}
+            onEdit={(id) => setEditId(id)}
             onProfile={(id, profile) => void setAccountProfile(id, profile)}
             profileError={profileError}
           />
         ) : null}
         {route.page === "playground" ? (
           <PlaygroundPage
-            t={t.play}
             roster={roster}
             activeId={activeId}
             protocol={protocol}
@@ -1059,18 +297,41 @@ export function App() {
           />
         ) : null}
         {route.page === "connect" ? (
-          <ConnectPage t={t.connect} origin={origin} copied={copied} recipe={recipe} snippets={snippets} routes={clientRoutes} onCopy={copyValue} onRecipe={setRecipe} />
+          <ConnectPage origin={origin} copied={copied} recipe={recipe} snippets={snippets} routes={clientRoutes} onCopy={copyValue} onRecipe={setRecipe} />
         ) : null}
-        {route.page === "settings" ? <SettingsPage t={t.settings} /> : null}
+        {route.page === "settings" ? <SettingsPage /> : null}
+        {route.page === "logs" ? <LogsPage /> : null}
       </main>
       {quotaFor ? (
         <QuotaDetail
-          t={t.quotaDetail}
           account={roster.find((item) => item.id === quotaFor)?.account}
           keyHint={roster.find((item) => item.id === quotaFor)?.keyHint ?? ""}
           onClose={() => setQuotaFor("")}
         />
       ) : null}
+      {(() => {
+        const editItem = roster.find((item) => item.id === editId);
+        const catalogReady = Boolean(editItem?.models && editItem.models.status !== "unavailable");
+        return (
+          <AccountEditModal
+            open={Boolean(editItem)}
+            item={editItem}
+            sandCapable={sandSelectable(editItem?.account, catalogReady)}
+            onClose={() => setEditId("")}
+            onSaveAccount={(id, edits) => editAccount(id, edits)}
+            onSaveProxy={(id, proxy) => editProxy(id, proxy)}
+            onSaveProfile={(id, profile) => setAccountProfile(id, profile)}
+          />
+        );
+      })()}
+      <ConfirmDialog
+        open={Boolean(removeId)}
+        title={t.editModal.confirmRemoveTitle}
+        body={t.editModal.confirmRemoveBody}
+        confirmLabel={t.editModal.confirmRemove}
+        onConfirm={() => void removeAccount(removeId)}
+        onClose={() => setRemoveId("")}
+      />
       <footer className="foot">
         <span>BF Labs · MIT · {protocolSummary}</span>
         <span className="foot-origin mono">{origin}</span>
@@ -1080,11 +341,12 @@ export function App() {
   );
 }
 
-function pageLabelFor(page: Route["page"], t: (typeof COPY)["en"] | (typeof COPY)["zh"]): string {
+function pageLabelFor(page: Route["page"], t: Copy): string {
   if (page === "connect") return t.navStart;
   if (page === "accounts" || page === "account") return t.navAccounts;
   if (page === "quota") return t.navQuota;
   if (page === "playground") return t.navPlay;
+  if (page === "logs") return t.navLogs;
   if (page === "settings") return t.navSettings;
   return t.navHome;
 }
@@ -1093,7 +355,7 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : "Request failed";
 }
 
-function NavIcon({ name }: { name: "home" | "quota" | "key" | "start" | "play" }) {
+function NavIcon({ name }: { name: "home" | "quota" | "key" | "start" | "play" | "logs" }) {
   const d =
     name === "home"
       ? "M3 10.5 12 3l9 7.5V21H14V14H10v7H3Z"
@@ -1103,7 +365,9 @@ function NavIcon({ name }: { name: "home" | "quota" | "key" | "start" | "play" }
           ? "M8 14a5 5 0 1 1 4.9-6H21v3h-2v3h-3v2h-3.1A5 5 0 0 1 8 14Zm0-3a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"
           : name === "start"
             ? "M8 5v14l11-7Z"
-            : "M4 5h10v4H8v6h6v4H4Zm12 3 5 4-5 4Z";
+            : name === "logs"
+              ? "M5 3h11l3 3v15H5Zm2 6h10v2H7Zm0 4h10v2H7Zm0 4h7v2H7Z"
+              : "M4 5h10v4H8v6h6v4H4Zm12 3 5 4-5 4Z";
   return (
     <svg className="nav-ico" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
       <path fill="currentColor" d={d} />

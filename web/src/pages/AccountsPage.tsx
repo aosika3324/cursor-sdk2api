@@ -1,7 +1,13 @@
 import { useMemo, useState } from "react";
 import { Button } from "../bflabs/Button";
+import { Checkbox } from "../bflabs/Checkbox";
+import { Field } from "../bflabs/Field";
+import { Input } from "../bflabs/Input";
+import { Modal } from "../bflabs/Modal";
 import type { RosterItem } from "../roster";
+import { useI18n } from "../state/I18nContext";
 import { AccountTable } from "./AccountTable";
+import { ConfirmDialog } from "./ConfirmDialog";
 import type { HomeCopy } from "./HomePage";
 import { ActionLink, PageFrame } from "./shared";
 
@@ -21,10 +27,6 @@ export interface AccountAdminCopy {
   batchPriority: string;
   batchConfirmDelete: string;
   clearSelection: string;
-  labelPrompt: string;
-  notePrompt: string;
-  priorityPrompt: string;
-  proxyPrompt: string;
   proxyClearHint: string;
   quota: string;
   moveUp: string;
@@ -46,8 +48,6 @@ export interface AccountAdminCopy {
 }
 
 export function AccountsPage({
-  t,
-  admin,
   draftKey,
   addError,
   adding,
@@ -66,8 +66,6 @@ export function AccountsPage({
   onOnboard,
   onboarding,
 }: {
-  t: HomeCopy & { add: string; adding: string; keyPlaceholder: string; keyHelp: string; remove: string };
-  admin: AccountAdminCopy;
   draftKey: string;
   addError: string;
   adding: boolean;
@@ -90,6 +88,9 @@ export function AccountsPage({
   onOnboard: (sessionToken: string, grantFable5: boolean, claimSand: boolean) => void;
   onboarding: boolean;
 }) {
+  const copy = useI18n().t;
+  const t = copy.home as unknown as HomeCopy & { add: string; adding: string; keyPlaceholder: string; keyHelp: string; remove: string };
+  const admin = copy.accountAdmin;
   const passed = roster.filter((item) => item.testState === "pass").length;
   const failed = roster.filter((item) => item.testState === "fail").length;
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -97,6 +98,9 @@ export function AccountsPage({
   const [tokenDraft, setTokenDraft] = useState("");
   const [grantF5, setGrantF5] = useState(true);
   const [claimBot, setClaimBot] = useState(true);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [priorityOpen, setPriorityOpen] = useState(false);
+  const [priorityDraft, setPriorityDraft] = useState("100");
 
   // Drop ids that no longer exist so a stale selection cannot act on them.
   const liveSelection = useMemo(
@@ -122,19 +126,33 @@ export function AccountsPage({
   const runBatch = (action: "enable" | "disable" | "delete" | "priority") => {
     const ids = [...liveSelection];
     if (ids.length === 0) return;
-    if (action === "delete" && !window.confirm(admin.batchConfirmDelete.replace("{n}", String(ids.length)))) {
+    if (action === "delete") {
+      setConfirmDelete(true);
       return;
     }
     if (action === "priority") {
-      const raw = window.prompt(admin.priorityPrompt, "100");
-      if (raw == null) return;
-      const priority = Number.parseInt(raw, 10);
-      if (!Number.isInteger(priority)) return;
-      onBatch({ ids, action, priority });
-    } else {
-      onBatch({ ids, action });
+      setPriorityDraft("100");
+      setPriorityOpen(true);
+      return;
     }
+    onBatch({ ids, action });
     setSelected(new Set());
+  };
+
+  const confirmBatchDelete = () => {
+    const ids = [...liveSelection];
+    if (ids.length === 0) return;
+    onBatch({ ids, action: "delete" });
+    setSelected(new Set());
+  };
+
+  const confirmBatchPriority = () => {
+    const ids = [...liveSelection];
+    const priority = Number.parseInt(priorityDraft, 10);
+    if (ids.length === 0 || !Number.isInteger(priority)) return;
+    onBatch({ ids, action: "priority", priority });
+    setSelected(new Set());
+    setPriorityOpen(false);
   };
 
   return (
@@ -175,7 +193,7 @@ export function AccountsPage({
             onAdd();
           }}
         >
-          <input
+          <Input
             type="password"
             value={draftKey}
             autoComplete="off"
@@ -197,7 +215,7 @@ export function AccountsPage({
             setTokenDraft("");
           }}
         >
-          <input
+          <Input
             type="password"
             value={tokenDraft}
             autoComplete="off"
@@ -205,22 +223,18 @@ export function AccountsPage({
             placeholder={admin.tokenPlaceholder}
             onChange={(event) => setTokenDraft(event.target.value)}
           />
-          <label className="inline-check">
-            <input
-              type="checkbox"
-              checked={grantF5}
-              onChange={(event) => setGrantF5(event.target.checked)}
-            />
-            {admin.grantFable5}
-          </label>
-          <label className="inline-check">
-            <input
-              type="checkbox"
-              checked={claimBot}
-              onChange={(event) => setClaimBot(event.target.checked)}
-            />
-            {admin.claimSand}
-          </label>
+          <Checkbox
+            className="inline-check"
+            label={admin.grantFable5}
+            checked={grantF5}
+            onChange={(event) => setGrantF5(event.target.checked)}
+          />
+          <Checkbox
+            className="inline-check"
+            label={admin.claimSand}
+            checked={claimBot}
+            onChange={(event) => setClaimBot(event.target.checked)}
+          />
           <Button type="submit" variant="primary" size="sm" loading={onboarding} disabled={onboarding}>
             {onboarding ? admin.onboarding : t.add}
           </Button>
@@ -290,6 +304,37 @@ export function AccountsPage({
           }}
         />
       )}
+      <ConfirmDialog
+        open={confirmDelete}
+        title={copy.editModal.confirmRemoveTitle}
+        body={admin.batchConfirmDelete.replace("{n}", String(liveSelection.size))}
+        confirmLabel={admin.batchDelete}
+        onConfirm={confirmBatchDelete}
+        onClose={() => setConfirmDelete(false)}
+      />
+      <Modal
+        open={priorityOpen}
+        onClose={() => setPriorityOpen(false)}
+        title={admin.batchPriority}
+        footer={
+          <>
+            <Button variant="quiet" size="sm" onClick={() => setPriorityOpen(false)}>
+              {copy.editModal.cancel}
+            </Button>
+            <Button variant="primary" size="sm" onClick={confirmBatchPriority}>
+              {copy.editModal.save}
+            </Button>
+          </>
+        }
+      >
+        <Field label={admin.priority} hint={copy.editModal.priorityHint}>
+          <Input
+            type="number"
+            value={priorityDraft}
+            onChange={(event) => setPriorityDraft(event.target.value)}
+          />
+        </Field>
+      </Modal>
     </PageFrame>
   );
 }

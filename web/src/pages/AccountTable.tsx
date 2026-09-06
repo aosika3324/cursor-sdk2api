@@ -1,4 +1,5 @@
 import { Button } from "../bflabs/Button";
+import { Checkbox } from "../bflabs/Checkbox";
 import { accountBadges } from "../badges";
 import { catalogHasFable5 } from "../fable5";
 import { hrefFor } from "../nav";
@@ -85,8 +86,7 @@ export function AccountTable({
           <tr>
             {extras ? (
               <th className="col-select">
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={allSelected}
                   onChange={extras.onToggleAll}
                   aria-label="select all"
@@ -118,8 +118,7 @@ export function AccountTable({
               <tr key={item.id} className={item.disabled ? "row-disabled" : undefined}>
                 {extras ? (
                   <td className="col-select">
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={extras.selected.has(item.id)}
                       onChange={() => extras.onToggle(item.id)}
                       aria-label={item.keyHint}
