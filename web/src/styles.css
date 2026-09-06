@@ -6,6 +6,12 @@
   --hair: #111417;
   --hover: var(--bf-surface, #f0eeeb);
   --accent: var(--bf-color-orange, #ff6a33);
+  /* Legacy aliases mapped onto bflabs tokens (auto-adapt per tone). */
+  --line: var(--bf-divider);
+  --surface: var(--bf-surface);
+  --surface-2: var(--bf-surface);
+  --text-muted: var(--bf-foreground-muted);
+  --danger: var(--bf-color-danger);
   --font: "Avenir Next", "Helvetica Neue", "Noto Sans SC", "PingFang SC", sans-serif;
   --mono: "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace;
   --motion-fast: var(--bf-duration-fast, 220ms);
@@ -607,6 +613,10 @@ html[lang="zh-CN"] .page-head h1 { letter-spacing: 0; }
 }
 .row-link { display: grid; gap: 2px; text-decoration: none; }
 .quota-breakdown { display: block; margin-top: 4px; white-space: normal; }
+.quota-cell { display: grid; gap: 10px; min-width: 0; max-width: 320px; }
+.quota-cell .bf-meter { min-width: 0; }
+.quota-cell__line { font-size: 13px; }
+.quota-cell__plan { color: var(--mute); }
 .grid-table th:last-child,
 .grid-table td.row-actions { width: 1%; text-align: right; padding-right: 8px; }
 .grid-table td.row-actions { vertical-align: middle; white-space: nowrap; }
@@ -1128,15 +1138,39 @@ textarea {
   .row-action-group { flex-wrap: wrap; }
 }
 
-/* Import mode tabs */
-.import-tabs { display: flex; gap: 4px; margin: 10px 0 8px; }
-.import-tabs button {
-  border: 1px solid var(--line, #2a2a2a); border-bottom: none;
-  border-radius: 8px 8px 0 0; padding: 6px 14px;
-  background: var(--surface-2, #141414); color: var(--text-muted, #8b8b8b);
-  cursor: pointer; font-size: 13px;
+/* Import mode tabs — bflabs segmented control */
+.import-tabs {
+  display: inline-flex;
+  gap: var(--bf-space-1);
+  margin: 10px 0 12px;
+  padding: var(--bf-space-1);
+  border: 1px solid var(--bf-divider);
+  border-radius: var(--bf-radius-surface);
+  background: var(--bf-surface);
 }
-.import-tabs button.is-active { color: inherit; background: var(--surface, #0f0f0f); border-color: var(--line, #2a2a2a); }
+.import-tabs button {
+  border: 1px solid transparent;
+  border-radius: var(--bf-radius-control);
+  padding: var(--bf-space-2) var(--bf-space-4);
+  background: transparent;
+  color: var(--bf-foreground-muted);
+  cursor: pointer;
+  font-family: var(--bf-font-display);
+  font-size: var(--bf-text-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition:
+    background-color var(--bf-duration-fast) var(--bf-ease-standard),
+    color var(--bf-duration-fast) var(--bf-ease-standard);
+}
+.import-tabs button:hover:not(.is-active) {
+  color: var(--bf-foreground);
+}
+.import-tabs button.is-active {
+  background: var(--bf-surface-strong);
+  color: var(--bf-on-strong);
+}
 .inline-check { white-space: nowrap; }
 
 /* Quota detail modal */

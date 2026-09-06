@@ -1,9 +1,15 @@
 import { Button } from "../bflabs/Button";
 import { Checkbox } from "../bflabs/Checkbox";
+import { Meter } from "../bflabs/Meter";
 import { accountBadges } from "../badges";
 import { catalogHasFable5 } from "../fable5";
 import { hrefFor } from "../nav";
-import { formatGrokBotQuota, formatQuota, formatQuotaBreakdown } from "../quota";
+import {
+  cursorSpend,
+  formatQuota,
+  grokBotUsedPercent,
+  planSummary,
+} from "../quota";
 import { identityLabel, type RosterItem } from "../roster";
 import { ActionLink } from "./shared";
 
@@ -102,8 +108,9 @@ export function AccountTable({
         <tbody>
           {items.map((item, rowIndex) => {
             const quota = formatQuota(item.account);
-            const quotaBreakdown = formatQuotaBreakdown(item.account);
-            const grokQuota = formatGrokBotQuota(item.account);
+            const spend = cursorSpend(item.account);
+            const grokUsed = grokBotUsedPercent(item.account);
+            const plan = planSummary(item.account);
             const fable = item.models ? (catalogHasFable5(item.models) ? fableOn : fableOff) : fableUnknown;
             const badges = extras ? accountBadges(item.account, item.models, extras.labels.badges) : [];
             const probe =
@@ -180,9 +187,21 @@ export function AccountTable({
                   {item.lastError ? <span className="sub row-error">{item.lastError.reason}</span> : null}
                 </td>
                 <td>
-                  <span>{quota || quotaMissing}</span>
-                  {quotaBreakdown ? <span className="sub quota-breakdown">{quotaBreakdown}</span> : null}
-                  <span className="sub quota-breakdown">{grokBotQuota} {grokQuota || grokBotMissing}</span>
+                  <div className="quota-cell">
+                    {spend ? (
+                      <Meter label="Cursor" used={spend.used} limit={spend.limit} unit="USD" />
+                    ) : quota ? (
+                      <span className="quota-cell__line">{quota}</span>
+                    ) : (
+                      <span className="sub quota-breakdown">{quotaMissing}</span>
+                    )}
+                    {grokUsed !== undefined ? (
+                      <Meter label={grokBotQuota} used={grokUsed} limit={100} />
+                    ) : (
+                      <span className="sub quota-breakdown">{grokBotQuota} {grokBotMissing}</span>
+                    )}
+                    {plan ? <span className="sub quota-cell__plan">{plan}</span> : null}
+                  </div>
                 </td>
                 <td>{fable}</td>
                 <td>{probe}</td>

@@ -79,6 +79,22 @@ export function formatPercent(value: number): string {
   return `${clamped.toFixed(clamped % 1 === 0 ? 0 : 1)}%`;
 }
 
+export function cursorSpend(account?: AccountPayload): { used: number; limit: number } | undefined {
+  if (!account?.capabilities.limits || !account.limits) return undefined;
+  const used = finiteNumber(account.limits.used_usd);
+  const limit = finiteNumber(account.limits.limit_usd);
+  if (used === undefined || limit === undefined || limit <= 0) return undefined;
+  return { used, limit };
+}
+
+export function planSummary(account?: AccountPayload): string {
+  const spending = account?.spending;
+  if (!spending) return "";
+  const name = typeof spending.plan_name === "string" ? spending.plan_name.trim() : "";
+  const price = typeof spending.plan_price === "string" ? spending.plan_price.trim() : "";
+  return [name, price].filter(Boolean).join(" · ");
+}
+
 export function sandSelectable(account?: AccountPayload, catalogReady = false): boolean {
   return Boolean(catalogReady && account?.grok_bot?.available === true && account.runtime?.sand_selectable !== false);
 }
