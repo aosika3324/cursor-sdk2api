@@ -277,7 +277,7 @@ export function createApp(input: {
     const boundFingerprint = parsed ? boundCredentialFingerprint(parsed, sessionHint) : undefined;
     if (boundFingerprint && !excludedFingerprints.has(boundFingerprint)) {
       const bound = accounts.findByFingerprint(boundFingerprint);
-      if (bound) return managedAccountAuth(bound.apiKey, bound.defaultProfile);
+      if (bound) return managedAccountAuth(bound.apiKey, bound.defaultProfile, accounts.getSessionToken(bound.id));
       // A self-contained tool continuation can cold-branch from its full
       // transcript when the originally bound managed account was removed.
       // Completed session follow-ups still require their original account.
@@ -325,7 +325,7 @@ export function createApp(input: {
 
     const selected = accountPool.pick(candidates, parsed?.model ?? "account");
     if (!selected) throw upstreamError("No Cursor account is available", 503);
-    return managedAccountAuth(selected.apiKey, selected.defaultProfile);
+    return managedAccountAuth(selected.apiKey, selected.defaultProfile, accounts.getSessionToken(selected.id));
   };
 
   const resolveAuth = async (
