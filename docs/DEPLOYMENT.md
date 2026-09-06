@@ -14,11 +14,37 @@ The immutable build includes the optional BF Labs Operator Console at
 second production service is required. Set `CONSOLE_DIR` only when an operator
 intentionally supplies a different prebuilt static bundle.
 
-Loading the page and its v0.1 management calls is unauthenticated. A Cursor key
-is sent only during import and is not returned to the browser afterward; the
-roster keeps only account ids and masked hints. The supplied compose files bind
-the console to `127.0.0.1`. An Internet-facing reverse proxy must authenticate
-and restrict `/console/` and `/v0/management/*`.
+The console requires login in managed mode. `POST /v0/management/auth/login`
+takes the `GATEWAY_ACCESS_KEY` and issues an HttpOnly, SameSite=Strict session
+cookie (marked `Secure` when the request arrives over HTTPS via
+`x-forwarded-proto`); all other `/v0/management/*` routes then require a valid
+session cookie and return `401` without one. `GET /v0/management/auth/session`
+reports login state; `POST /v0/management/auth/logout` clears it. Sessions are
+in-memory (a restart requires re-login; single-instance only). In BYOK mode
+there is no gateway key to authenticate against, so the console is not gated —
+front it with a reverse proxy that authenticates and restricts `/console/` and
+`/v0/management/*`. A Cursor key is sent only during import and is not returned
+to the browser afterward; the roster keeps only account ids and masked hints.
+The supplied compose files bind the console to `127.0.0.1`.
+
+### Observability endpoints (session-gated in managed mode)
+
+- `GET /v0/management/logs/stream` and `GET /v0/management/activity/stream` —
+  Server-Sent Events. The log stream tails structured gateway log lines; the
+  activity stream reports per-request telemetry (account hint, timestamp,
+  client IP, model, final status, credential fingerprint hint, duration).
+- `GET/PUT /v0/management/logs/capacity` — read or set the in-memory ring
+  buffer size, shared by both streams. Allowed steps: 20, 30, 50, 100, 200,
+  300 (default 50). Lowering it trims oldest entries immediately, bounding
+  memory. Adjustable at runtime from the console Logs page.
+- `GET /v0/management/activity/stats` — current requests-per-minute.
+
+Both buffers are in-memory only (never persisted), bounded by the capacity
+step, and cleared on restart. Client IPs are taken from `x-forwarded-for` (first
+hop) with a socket-address fallback — behind Caddy on the 216 deploy this is the
+real client IP. SSE responses set `x-accel-buffering: no` so a buffering proxy
+flushes events per-frame.
+
 
 ## Docker
 
