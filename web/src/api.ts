@@ -70,6 +70,49 @@ export interface BatchResult {
   reason?: string;
 }
 
+/**
+ * Raised when a management/settings request returns 401. Callers (AppState /
+ * Auth) treat this as "session expired" and drop back to the login gate.
+ */
+export class UnauthorizedError extends Error {
+  constructor(message = "unauthorized") {
+    super(message);
+    this.name = "UnauthorizedError";
+  }
+}
+
+/** POST /v0/management/auth/login. Returns true on 200, false on 401. */
+export async function login(accessKey: string): Promise<boolean> {
+  const response = await fetch("/v0/management/auth/login", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ access_key: accessKey }),
+  });
+  if (response.status === 200) return true;
+  if (response.status === 401) return false;
+  throw new Error(await errorMessage(response));
+}
+
+/** POST /v0/management/auth/logout. */
+export async function logout(): Promise<void> {
+  const response = await fetch("/v0/management/auth/logout", {
+    method: "POST",
+    credentials: "same-origin",
+  });
+  if (!response.ok) throw new Error(await errorMessage(response));
+}
+
+/** GET /v0/management/auth/session → whether the console cookie is valid. */
+export async function getSession(): Promise<boolean> {
+  const response = await fetch("/v0/management/auth/session", {
+    credentials: "same-origin",
+  });
+  if (!response.ok) throw new Error(await errorMessage(response));
+  const body = (await response.json()) as { authenticated?: boolean };
+  return body.authenticated === true;
+}
+
 export async function getHealth(): Promise<HealthPayload> {
   return getJson<HealthPayload>("/health");
 }
@@ -230,14 +273,24 @@ async function managementJson<T>(
   init: RequestInit & { path?: string },
 ): Promise<T> {
   const headers = new Headers(init.headers);
-  const response = await fetch(`/v0/management/accounts${init.path ?? ""}`, { ...init, headers });
+  const response = await fetch(`/v0/management/accounts${init.path ?? ""}`, {
+    ...init,
+    headers,
+    credentials: "same-origin",
+  });
+  if (response.status === 401) throw new UnauthorizedError();
   if (!response.ok) throw new Error(await errorMessage(response));
   return (await response.json()) as T;
 }
 
 async function settingsJson<T>(init: RequestInit & { path?: string }): Promise<T> {
   const headers = new Headers(init.headers);
-  const response = await fetch(`/v0/management/settings${init.path ?? ""}`, { ...init, headers });
+  const response = await fetch(`/v0/management/settings${init.path ?? ""}`, {
+    ...init,
+    headers,
+    credentials: "same-origin",
+  });
+  if (response.status === 401) throw new UnauthorizedError();
   if (!response.ok) throw new Error(await errorMessage(response));
   return (await response.json()) as T;
 }

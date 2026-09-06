@@ -18,7 +18,8 @@ import type { Protocol } from "./types";
 import bfMarkUrl from "./assets/bf-mark.svg";
 import { I18nProvider, useI18n, type Copy } from "./state/I18nContext";
 import { AppStateProvider, useAppState } from "./state/AppStateContext";
-import { AuthProvider } from "./state/AuthContext";
+import { AuthProvider, useAuthContext } from "./state/AuthContext";
+import { LoginPage } from "./pages/LoginPage";
 
 type LoadState = "idle" | "loading" | "ready" | "error";
 
@@ -26,11 +27,20 @@ export function App() {
   return (
     <I18nProvider>
       <AuthProvider>
-        <AppStateProvider>
-          <AppInner />
-        </AppStateProvider>
+        <AuthGate />
       </AuthProvider>
     </I18nProvider>
+  );
+}
+
+function AuthGate() {
+  const { authenticated, checkedSession, authEnforced } = useAuthContext();
+  if (!checkedSession) return null;
+  if (authEnforced && !authenticated) return <LoginPage />;
+  return (
+    <AppStateProvider>
+      <AppInner />
+    </AppStateProvider>
   );
 }
 

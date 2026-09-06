@@ -10,6 +10,10 @@ vi.mock("../../api", () => ({
   getSettings: vi.fn(),
   getSettingsSchema: vi.fn(),
   updateSettings: vi.fn(),
+  getSession: vi.fn(),
+  login: vi.fn(),
+  logout: vi.fn(),
+  UnauthorizedError: class UnauthorizedError extends Error {},
 }));
 
 import * as api from "../../api";
@@ -134,17 +138,77 @@ describe("AppStateContext", () => {
 });
 
 describe("AuthContext", () => {
-  it("defaults authenticated to true (behavior unchanged until C1)", () => {
+  it("authenticates when the session probe reports a valid cookie", async () => {
+    vi.mocked(api.getSession).mockResolvedValue(true);
     function Probe() {
-      const { authenticated } = useAuthContext();
-      return <span data-testid="a">{String(authenticated)}</span>;
+      const { authenticated, checkedSession } = useAuthContext();
+      return <span data-testid="a">{`${checkedSession}:${authenticated}`}</span>;
     }
     render(
       <AuthProvider>
         <Probe />
       </AuthProvider>,
     );
-    expect(screen.getByTestId("a")).toHaveTextContent("true");
+    await waitFor(() => expect(screen.getByTestId("a")).toHaveTextContent("true:true"));
+  });
+
+  it("shows auth as enforced-and-unauthenticated when management is gated (managed mode)", async () => {
+    vi.mocked(api.getSession).mockResolvedValue(false);
+    vi.mocked(api.getManagedAccounts).mockRejectedValue(new api.UnauthorizedError());
+    function Probe() {
+      const { authenticated, authEnforced, checkedSession } = useAuthContext();
+      return <span data-testid="a">{`${checkedSession}:${authEnforced}:${authenticated}`}</span>;
+    }
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId("a")).toHaveTextContent("true:true:false"));
+  });
+
+  it("treats byok (ungated management) as authenticated without a session", async () => {
+    vi.mocked(api.getSession).mockResolvedValue(false);
+    vi.mocked(api.getManagedAccounts).mockResolvedValue([] as never);
+    function Probe() {
+      const { authenticated, authEnforced } = useAuthContext();
+      return <span data-testid="a">{`${authEnforced}:${authenticated}`}</span>;
+    }
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId("a")).toHaveTextContent("false:true"));
+  });
+
+  it("fails open when the session probe itself throws (no unpassable gate)", async () => {
+    vi.mocked(api.getSession).mockRejectedValue(new Error("network down"));
+    function Probe() {
+      const { authenticated, authEnforced, checkedSession } = useAuthContext();
+      return <span data-testid="a">{`${checkedSession}:${authEnforced}:${authenticated}`}</span>;
+    }
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId("a")).toHaveTextContent("true:false:true"));
+  });
+
+  it("fails open when the management probe throws a non-Unauthorized error", async () => {
+    vi.mocked(api.getSession).mockResolvedValue(false);
+    vi.mocked(api.getManagedAccounts).mockRejectedValue(new Error("500 boom"));
+    function Probe() {
+      const { authenticated, authEnforced } = useAuthContext();
+      return <span data-testid="a">{`${authEnforced}:${authenticated}`}</span>;
+    }
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId("a")).toHaveTextContent("false:true"));
   });
 
   it("throws when useAuthContext is used outside its provider", () => {

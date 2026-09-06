@@ -1369,3 +1369,50 @@ textarea {
     transform: none !important;
   }
 }
+
+/* Console login gate (Task C1) */
+.login-shell {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: var(--bf-space-6);
+  background: var(--paper);
+}
+
+.login-card {
+  width: min(28rem, 100%);
+  display: grid;
+  gap: var(--bf-space-5);
+  padding: var(--bf-space-6);
+  border: 1px solid var(--bf-divider);
+  border-radius: var(--bf-radius-surface);
+  background: var(--bf-background);
+  box-shadow: var(--bf-shadow-float);
+}
+
+.login-head { display: grid; gap: 0.35rem; }
+
+.login-title {
+  margin: 0;
+  font-family: var(--bf-font-display);
+  font-size: var(--bf-text-xl);
+  font-weight: 600;
+}
+
+.login-sub {
+  margin: 0;
+  color: var(--bf-foreground-muted);
+  font-size: var(--bf-text-sm);
+  line-height: 1.5;
+}
+
+.login-form { display: grid; gap: var(--bf-space-4); }
+
+.bf-notice.bf-notice--danger {
+  background: var(--bf-color-danger-soft);
+  color: var(--bf-color-danger);
+}
+
+.bf-notice.bf-notice--danger .bf-notice__icon {
+  background: var(--bf-color-danger);
+}
