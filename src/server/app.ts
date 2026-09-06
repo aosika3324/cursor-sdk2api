@@ -38,6 +38,7 @@ import { inspectSandLoader, type SandLoaderHealth } from "../sdk/sand-loader.js"
 import { SessionRegistry } from "../core/session-registry.js";
 import { LogSink } from "../core/log-sink.js";
 import { RequestTelemetry } from "../core/request-telemetry.js";
+import { handleLogRoutes } from "./log-routes.js";
 import {
   forbiddenError,
   GatewayError,
@@ -605,6 +606,21 @@ export function createApp(input: {
           return;
         }
       }
+
+      if (
+        await handleLogRoutes({
+          req,
+          res,
+          path,
+          method,
+          requestId,
+          logSink,
+          telemetry,
+          clock,
+          maxBodyBytes: config.maxBodyBytes,
+        })
+      )
+        return;
 
       if (path === "/v0/management/accounts/probe" && method === "GET") {
         const id = new URL(req.url ?? "/", "http://localhost").searchParams.get("id")?.trim() ?? "";
