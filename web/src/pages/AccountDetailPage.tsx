@@ -3,53 +3,24 @@ import { catalogHasFable5, FABLE5_DASHBOARD, FABLE5_DOCS, modelLooksLikeFable5 }
 import { hrefFor } from "../nav";
 import { currentProfile, sandSelectable } from "../quota";
 import { identityLabel, type RosterItem } from "../roster";
+import { useI18n } from "../state/I18nContext";
 import { QuotaPair } from "./QuotaMeters";
 import { ActionLink, PageFrame } from "./shared";
 
 export function AccountDetailPage({
-  t,
   item,
   onTest,
   onUse,
   onProfile,
   profileError,
 }: {
-  t: {
-    missing: string;
-    back: string;
-    test: string;
-    testing: string;
-    use: string;
-    quota: string;
-    quotaMissing: string;
-    quotaOpen: string;
-    fableOn: string;
-    fableOff: string;
-    fableUnknown: string;
-    fableHelp: string;
-    fableOpen: string;
-    fableDocs: string;
-    models: string;
-    noModels: string;
-    cursorUsage: string;
-    cursorQuota: string;
-    grokBotQuota: string;
-    grokBotMissing: string;
-    remainingPrefix: string;
-    resetPrefix: string;
-    runtime: string;
-    runtimeSdk: string;
-    runtimeSand: string;
-    runtimeHint: string;
-    runtimeSandOff: string;
-    profileError: string;
-  };
   item?: RosterItem;
   onTest: (id: string) => void;
   onUse: (id: string) => void;
   onProfile: (id: string, profile: "sdk" | "sand") => void;
   profileError?: string;
 }) {
+  const t = useI18n().t.detail;
   if (!item) {
     return (
       <PageFrame title={t.missing} actions={<ActionLink href={hrefFor("accounts")}>{t.back}</ActionLink>}>

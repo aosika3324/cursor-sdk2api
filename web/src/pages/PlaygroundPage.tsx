@@ -3,11 +3,11 @@ import { Button } from "../bflabs/Button";
 import { Tabs } from "../bflabs/Tabs";
 import { hrefFor } from "../nav";
 import { identityLabel, type RosterItem } from "../roster";
+import { useI18n } from "../state/I18nContext";
 import type { Protocol } from "../types";
 import { PageFrame } from "./shared";
 
 export function PlaygroundPage({
-  t,
   roster,
   activeId,
   protocol,
@@ -23,18 +23,6 @@ export function PlaygroundPage({
   onStream,
   onRun,
 }: {
-  t: {
-    title: string;
-    pick: string;
-    prompt: string;
-    send: string;
-    sending: string;
-    stream: string;
-    events: string;
-    emptyOutput: string;
-    waiting: string;
-    accounts: string;
-  };
   roster: RosterItem[];
   activeId: string;
   protocol: Protocol;
@@ -50,6 +38,7 @@ export function PlaygroundPage({
   onStream: (value: boolean) => void;
   onRun: () => void;
 }) {
+  const t = useI18n().t.play;
   const active = roster.find((item) => item.id === activeId);
   const models = active?.models;
 

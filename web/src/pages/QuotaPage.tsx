@@ -4,21 +4,21 @@ import { catalogHasFable5 } from "../fable5";
 import { hrefFor } from "../nav";
 import { formatGrokBotQuota, formatQuota } from "../quota";
 import { identityLabel, type RosterItem } from "../roster";
+import { useI18n } from "../state/I18nContext";
 import type { HomeCopy } from "./HomePage";
 import { QuotaPair } from "./QuotaMeters";
 import { ActionLink, PageFrame } from "./shared";
 
 export function QuotaPage({
-  t,
   roster,
   onTest,
   onTestAll,
 }: {
-  t: HomeCopy;
   roster: RosterItem[];
   onTest: (id: string) => void;
   onTestAll: () => void;
 }) {
+  const t = useI18n().t.home as unknown as HomeCopy;
   const passed = roster.filter((item) => item.testState === "pass");
   const failed = roster.filter((item) => item.testState === "fail");
   const quotaKnown = passed.filter((item) => formatQuota(item.account) || formatGrokBotQuota(item.account)).length;

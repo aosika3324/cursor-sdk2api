@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { formatPercent, formatResetAt } from "../quota";
+import { useI18n } from "../state/I18nContext";
 import type { AccountPayload } from "../types";
 
 export interface QuotaDetailCopy {
@@ -65,16 +66,15 @@ function Meter({
 }
 
 export function QuotaDetail({
-  t,
   account,
   keyHint,
   onClose,
 }: {
-  t: QuotaDetailCopy;
   account?: AccountPayload;
   keyHint: string;
   onClose: () => void;
 }) {
+  const t = useI18n().t.quotaDetail;
   const limits = (account?.limits ?? {}) as Record<string, unknown>;
   const spending = (account?.spending ?? {}) as Record<string, unknown>;
   const grokBot = account?.grok_bot;

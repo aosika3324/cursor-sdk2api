@@ -3,6 +3,7 @@ import { Button } from "../bflabs/Button";
 import { Card } from "../bflabs/Card";
 import { Notice } from "../bflabs/Notice";
 import { PageFrame } from "./shared";
+import { useI18n } from "../state/I18nContext";
 import {
   getSettings,
   getSettingsSchema,
@@ -40,7 +41,8 @@ const GROUPS: Array<{ effect: SettingsEffect }> = [
   { effect: "new_sessions" },
 ];
 
-export function SettingsPage({ t }: { t: SettingsCopy }) {
+export function SettingsPage() {
+  const t = useI18n().t.settings;
   const [schema, setSchema] = useState<SettingsSchema | null>(null);
   const [settings, setSettings] = useState<RuntimeSettingsView | null>(null);
   const [draft, setDraft] = useState<Record<string, unknown>>({});

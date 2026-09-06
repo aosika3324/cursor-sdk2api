@@ -2,6 +2,7 @@ import { Button } from "../bflabs/Button";
 import { Notice } from "../bflabs/Notice";
 import { Tabs } from "../bflabs/Tabs";
 import { RECIPE_ORDER, type RecipeName } from "../recipes";
+import { useI18n } from "../state/I18nContext";
 import { PageFrame } from "./shared";
 
 const RECIPE_LABEL: Record<RecipeName, string> = {
@@ -12,7 +13,6 @@ const RECIPE_LABEL: Record<RecipeName, string> = {
 };
 
 export function ConnectPage({
-  t,
   origin,
   copied,
   recipe,
@@ -21,19 +21,6 @@ export function ConnectPage({
   onCopy,
   onRecipe,
 }: {
-  t: {
-    title: string;
-    origin: string;
-    copy: string;
-    copied: string;
-    recipes: string;
-    routeTitle: string;
-    routeClient: string;
-    routeEndpoint: string;
-    routeNote: string;
-    workspaceTitle: string;
-    workspaceBody: string;
-  };
   origin: string;
   copied: string;
   recipe: RecipeName;
@@ -42,6 +29,7 @@ export function ConnectPage({
   onCopy: (label: string, value: string) => void;
   onRecipe: (value: RecipeName) => void;
 }) {
+  const t = useI18n().t.connect;
   return (
     <PageFrame title={t.title}>
       <div className="home-origin">

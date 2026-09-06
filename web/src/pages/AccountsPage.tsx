@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Button } from "../bflabs/Button";
 import type { RosterItem } from "../roster";
+import { useI18n } from "../state/I18nContext";
 import { AccountTable } from "./AccountTable";
 import type { HomeCopy } from "./HomePage";
 import { ActionLink, PageFrame } from "./shared";
@@ -46,8 +47,6 @@ export interface AccountAdminCopy {
 }
 
 export function AccountsPage({
-  t,
-  admin,
   draftKey,
   addError,
   adding,
@@ -66,8 +65,6 @@ export function AccountsPage({
   onOnboard,
   onboarding,
 }: {
-  t: HomeCopy & { add: string; adding: string; keyPlaceholder: string; keyHelp: string; remove: string };
-  admin: AccountAdminCopy;
   draftKey: string;
   addError: string;
   adding: boolean;
@@ -90,6 +87,9 @@ export function AccountsPage({
   onOnboard: (sessionToken: string, grantFable5: boolean, claimSand: boolean) => void;
   onboarding: boolean;
 }) {
+  const copy = useI18n().t;
+  const t = copy.home as unknown as HomeCopy & { add: string; adding: string; keyPlaceholder: string; keyHelp: string; remove: string };
+  const admin = copy.accountAdmin;
   const passed = roster.filter((item) => item.testState === "pass").length;
   const failed = roster.filter((item) => item.testState === "fail").length;
   const [selected, setSelected] = useState<Set<string>>(new Set());

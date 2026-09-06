@@ -6,6 +6,7 @@ import { catalogHasFable5 } from "../fable5";
 import { hrefFor } from "../nav";
 import { formatQuota } from "../quota";
 import type { RosterItem } from "../roster";
+import { useI18n } from "../state/I18nContext";
 
 const API_CARDS = [
   { id: "messages", name: "Messages", path: "/v1/messages" },
@@ -14,7 +15,6 @@ const API_CARDS = [
 ] as const;
 
 export function HomePage({
-  t,
   origin,
   copied,
   ready,
@@ -28,7 +28,6 @@ export function HomePage({
   onCopy,
   onRefresh,
 }: {
-  t: HomeCopy;
   origin: string;
   copied: string;
   ready: string;
@@ -42,6 +41,7 @@ export function HomePage({
   onCopy: (label: string, value: string) => void;
   onRefresh: () => void;
 }) {
+  const t = useI18n().t.home as unknown as HomeCopy;
   const passed = roster.filter((item) => item.testState === "pass");
   const failed = roster.filter((item) => item.testState === "fail");
   const quotaKnown = passed.filter((item) => formatQuota(item.account)).length;
