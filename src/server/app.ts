@@ -36,7 +36,7 @@ import { OrdinaryTurnJournal } from "../core/ordinary-turn-journal.js";
 import { RuntimeLedger } from "../core/runtime-ledger.js";
 import { inspectSandLoader, type SandLoaderHealth } from "../sdk/sand-loader.js";
 import { SessionRegistry } from "../core/session-registry.js";
-import { LogSink } from "../core/log-sink.js";
+import { LogSink, type LogEntry } from "../core/log-sink.js";
 import { RequestTelemetry } from "../core/request-telemetry.js";
 import { handleLogRoutes } from "./log-routes.js";
 import {
@@ -51,7 +51,7 @@ import {
   upstreamError,
 } from "../errors.js";
 import { requestId as newRequestId } from "../ids.js";
-import type { Logger } from "../log.js";
+import { sanitize, type Logger } from "../log.js";
 import { parseMessagesRequest } from "../protocols/anthropic/parse.js";
 import type { ParsedMessages } from "../protocols/anthropic/types.js";
 import { estimateAnthropicInputTokens } from "../protocols/anthropic/count-tokens.js";
@@ -148,6 +148,32 @@ function staleCredentialSessionError(error: unknown): boolean {
   return !/invalid|revoked|expired|disabled|unauthorized api key/i.test(error.message);
 }
 
+export function createTeeLogger(
+  baseLogger: Logger,
+  logSink: LogSink,
+  clock: { now: () => number },
+): Logger {
+  const tee = (level: LogEntry["level"], fields: Record<string, unknown>, message: string) => {
+    const safeFields = sanitize(fields) as Record<string, unknown>;
+    const safeMsg = sanitize(String(message)) as string;
+    logSink.push({ level, msg: safeMsg, at: clock.now(), ...safeFields });
+  };
+  return {
+    info: (fields, message) => {
+      tee("info", fields, message);
+      baseLogger.info(fields, message);
+    },
+    warn: (fields, message) => {
+      tee("warn", fields, message);
+      baseLogger.warn(fields, message);
+    },
+    error: (fields, message) => {
+      tee("error", fields, message);
+      baseLogger.error(fields, message);
+    },
+  };
+}
+
 export function createApp(input: {
   config: GatewayConfig;
   sdk: SdkRuntime;
@@ -165,20 +191,7 @@ export function createApp(input: {
   const logSink = input.logSink ?? new LogSink();
   const telemetry = input.telemetry ?? new RequestTelemetry();
   const baseLogger = input.logger;
-  const logger: Logger = {
-    info: (fields, message) => {
-      logSink.push({ level: "info", msg: String(message), at: clock.now(), ...fields });
-      baseLogger.info(fields, message);
-    },
-    warn: (fields, message) => {
-      logSink.push({ level: "warn", msg: String(message), at: clock.now(), ...fields });
-      baseLogger.warn(fields, message);
-    },
-    error: (fields, message) => {
-      logSink.push({ level: "error", msg: String(message), at: clock.now(), ...fields });
-      baseLogger.error(fields, message);
-    },
-  };
+  const logger: Logger = createTeeLogger(baseLogger, logSink, clock);
   const fetchSandQuota = input.fetchSandQuota ?? fetchCursorSandQuota;
   const sandHealth = input.sandHealth ?? inspectSandLoader();
   const assertSandAccess = input.assertSandAccess ?? (async (apiKey: string) => {
