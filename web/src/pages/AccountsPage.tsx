@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Button } from "../bflabs/Button";
+import { Checkbox } from "../bflabs/Checkbox";
 import { Field } from "../bflabs/Field";
 import { Input } from "../bflabs/Input";
 import { Modal } from "../bflabs/Modal";
@@ -192,7 +193,7 @@ export function AccountsPage({
             onAdd();
           }}
         >
-          <input
+          <Input
             type="password"
             value={draftKey}
             autoComplete="off"
@@ -214,7 +215,7 @@ export function AccountsPage({
             setTokenDraft("");
           }}
         >
-          <input
+          <Input
             type="password"
             value={tokenDraft}
             autoComplete="off"
@@ -222,22 +223,18 @@ export function AccountsPage({
             placeholder={admin.tokenPlaceholder}
             onChange={(event) => setTokenDraft(event.target.value)}
           />
-          <label className="inline-check">
-            <input
-              type="checkbox"
-              checked={grantF5}
-              onChange={(event) => setGrantF5(event.target.checked)}
-            />
-            {admin.grantFable5}
-          </label>
-          <label className="inline-check">
-            <input
-              type="checkbox"
-              checked={claimBot}
-              onChange={(event) => setClaimBot(event.target.checked)}
-            />
-            {admin.claimSand}
-          </label>
+          <Checkbox
+            className="inline-check"
+            label={admin.grantFable5}
+            checked={grantF5}
+            onChange={(event) => setGrantF5(event.target.checked)}
+          />
+          <Checkbox
+            className="inline-check"
+            label={admin.claimSand}
+            checked={claimBot}
+            onChange={(event) => setClaimBot(event.target.checked)}
+          />
           <Button type="submit" variant="primary" size="sm" loading={onboarding} disabled={onboarding}>
             {onboarding ? admin.onboarding : t.add}
           </Button>

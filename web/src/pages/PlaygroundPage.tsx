@@ -1,6 +1,9 @@
 import { protocolEndpoint } from "../api";
 import { Button } from "../bflabs/Button";
+import { Field } from "../bflabs/Field";
+import { Select } from "../bflabs/Select";
 import { Tabs } from "../bflabs/Tabs";
+import { Textarea } from "../bflabs/Textarea";
 import { hrefFor } from "../nav";
 import { identityLabel, type RosterItem } from "../roster";
 import { useI18n } from "../state/I18nContext";
@@ -44,17 +47,16 @@ export function PlaygroundPage({
 
   return (
     <PageFrame title={t.title}>
-      <label className="field page-field">
-        <span>{t.pick}</span>
-        <select value={activeId} onChange={(event) => onActive(event.target.value)}>
+      <Field className="page-field" label={t.pick}>
+        <Select value={activeId} onChange={(event) => onActive(event.target.value)}>
           {roster.length === 0 ? <option value="">{t.waiting}</option> : null}
           {roster.map((item) => (
             <option key={item.id} value={item.id}>
               {identityLabel(item.account, item.keyHint)}
             </option>
           ))}
-        </select>
-      </label>
+        </Select>
+      </Field>
       {roster.length === 0 ? <p className="empty"><a href={hrefFor("accounts")}>{t.accounts}</a></p> : null}
 
       <Tabs
@@ -87,19 +89,17 @@ export function PlaygroundPage({
             <button type="button" className={!stream ? "is-on" : ""} onClick={() => onStream(false)}>JSON</button>
           </div>
         </div>
-        <label className="field page-field">
-          <span>Model</span>
-          <select value={selectedModel} onChange={(event) => onModel(event.target.value)}>
+        <Field className="page-field" label="Model">
+          <Select value={selectedModel} onChange={(event) => onModel(event.target.value)}>
             <option value="" disabled>{t.waiting}</option>
             {models?.data.map((model) => (
               <option key={model.id} value={model.id}>{model.display_name || model.id}</option>
             ))}
-          </select>
-        </label>
-        <label className="field page-field">
-          <span>{t.prompt}</span>
-          <textarea value={prompt} onChange={(event) => onPrompt(event.target.value)} />
-        </label>
+          </Select>
+        </Field>
+        <Field className="page-field" label={t.prompt}>
+          <Textarea value={prompt} onChange={(event) => onPrompt(event.target.value)} />
+        </Field>
         <div className="sendrow">
           <Button type="submit" variant="primary" size="sm" loading={runState === "loading"} disabled={!active || !selectedModel || runState === "loading"}>
             {runState === "loading" ? t.sending : t.send}

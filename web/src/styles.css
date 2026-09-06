@@ -706,14 +706,7 @@ html[lang="zh-CN"] .page-head h1 { letter-spacing: 0; }
   border-bottom: 1px solid var(--hair);
 }
 
-.page-field { grid-template-columns: 72px minmax(0, 1fr); max-width: 720px; margin-bottom: 14px; }
-.page-field select, .page-form textarea {
-  width: 100%;
-  min-height: 36px;
-  padding: 6px 8px;
-  border: 1px solid var(--hair);
-  background: var(--paper);
-}
+.page-field { max-width: 720px; margin-bottom: var(--bf-space-4); }
 .page-tabs { max-width: 720px; border: 1px solid var(--hair); margin: 18px 0; }
 .page-form { padding: 0; border: 0; }
 .page-out { min-height: 240px; border-top: 1px solid var(--hair); }
@@ -899,12 +892,6 @@ html[lang="zh-CN"] .page-head h1 { letter-spacing: 0; }
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   padding: 10px 14px 0;
-}
-.add-row input {
-  min-width: 0;
-  height: 32px;
-  padding: 0 8px;
-  border: 1px solid var(--hair);
 }
 .note { padding: 8px 14px 10px; font-size: 12px; color: var(--mute); line-height: 1.45; }
 .field-error { padding: 0 14px 8px; color: #c4412f; font-size: 12px; }
@@ -1150,8 +1137,7 @@ textarea {
   cursor: pointer; font-size: 13px;
 }
 .import-tabs button.is-active { color: inherit; background: var(--surface, #0f0f0f); border-color: var(--line, #2a2a2a); }
-.inline-check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; white-space: nowrap; }
-.inline-check input { width: 16px; height: 16px; }
+.inline-check { white-space: nowrap; }
 
 /* Quota detail modal */
 .quota-modal { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; }
@@ -1254,15 +1240,15 @@ textarea {
 /* System settings page */
 .settings-grid {
   display: grid;
-  gap: 10px;
-  margin-top: 12px;
+  gap: var(--bf-space-3);
+  margin-top: var(--bf-space-4);
 }
 
 .settings-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 220px);
   align-items: center;
-  gap: 12px;
+  gap: var(--bf-space-3);
 }
 
 .settings-row__key {
@@ -1272,23 +1258,8 @@ textarea {
   overflow-wrap: anywhere;
 }
 
-.settings-row input[type="text"],
-.settings-row input[type="password"],
-.settings-row input[type="number"],
-.settings-row select {
-  width: 100%;
-  padding: 7px 10px;
-  border: 1px solid var(--line, #2a2a2a);
-  border-radius: 8px;
-  background: var(--surface-2, #141414);
-  color: inherit;
-  font: inherit;
-}
-
-.settings-row input[type="checkbox"] {
+.settings-row .bf-checkbox {
   justify-self: start;
-  width: 18px;
-  height: 18px;
 }
 
 .settings-row--readonly {

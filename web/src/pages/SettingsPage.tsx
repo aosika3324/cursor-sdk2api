@@ -1,6 +1,9 @@
 import { Button } from "../bflabs/Button";
 import { Card } from "../bflabs/Card";
+import { Checkbox } from "../bflabs/Checkbox";
+import { Input } from "../bflabs/Input";
 import { Notice } from "../bflabs/Notice";
+import { Select } from "../bflabs/Select";
 import { PageFrame } from "./shared";
 import { useI18n } from "../state/I18nContext";
 import { useSettings } from "../state/useSettings";
@@ -92,15 +95,14 @@ export function SettingsPage() {
                 <label key={field.key} className="settings-row">
                   <span className="settings-row__key">{field.key}</span>
                   {field.type === "boolean" ? (
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={Boolean(value(field.key))}
                       onChange={(event) =>
                         setDraft((prev) => ({ ...prev, [field.key]: event.target.checked }))
                       }
                     />
                   ) : field.type === "enum" ? (
-                    <select
+                    <Select
                       value={String(value(field.key) ?? "")}
                       onChange={(event) =>
                         setDraft((prev) => ({ ...prev, [field.key]: event.target.value }))
@@ -109,9 +111,9 @@ export function SettingsPage() {
                       {(field.values ?? []).map((option) => (
                         <option key={option} value={option}>{option}</option>
                       ))}
-                    </select>
+                    </Select>
                   ) : (
-                    <input
+                    <Input
                       type="number"
                       value={Number(value(field.key) ?? 0)}
                       min={field.min}
@@ -141,7 +143,7 @@ export function SettingsPage() {
         <div className="settings-grid">
           <label className="settings-row">
             <span className="settings-row__key">{t.proxyUrl}</span>
-            <input
+            <Input
               type="text"
               placeholder="socks5://127.0.0.1:1080"
               value={proxyDraft.url}
@@ -150,7 +152,7 @@ export function SettingsPage() {
           </label>
           <label className="settings-row">
             <span className="settings-row__key">{t.proxyUser}</span>
-            <input
+            <Input
               type="text"
               value={proxyDraft.username}
               onChange={(event) =>
@@ -160,7 +162,7 @@ export function SettingsPage() {
           </label>
           <label className="settings-row">
             <span className="settings-row__key">{t.proxyPassword}</span>
-            <input
+            <Input
               type="password"
               value={proxyDraft.password}
               onChange={(event) =>
