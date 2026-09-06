@@ -30,6 +30,8 @@ export async function startTestApp(
     fetchSandQuota?: (apiKey: string) => Promise<CursorSandResult>;
     sandHealth?: import("../../src/sdk/sand-loader.js").SandLoaderHealth;
     assertSandAccess?: (apiKey: string) => Promise<void>;
+    logSink?: import("../../src/core/log-sink.js").LogSink;
+    telemetry?: import("../../src/core/request-telemetry.js").RequestTelemetry;
   } = {},
 ): Promise<TestContext> {
   const clock = options.clock ?? new SystemClock();
@@ -70,6 +72,8 @@ export async function startTestApp(
       patch_contract_version: "1.0.30",
     },
     assertSandAccess: options.assertSandAccess,
+    logSink: options.logSink,
+    telemetry: options.telemetry,
   });
   const server = createServer((req, res) => {
     void app.handler(req, res);

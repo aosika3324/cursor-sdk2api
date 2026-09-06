@@ -40,4 +40,14 @@ describe("RequestTelemetry", () => {
     t.record(entry({ status: 200 }));
     expect(seen).toEqual([429]);
   });
+
+  it("swallows a throwing subscriber and still buffers the entry", () => {
+    const t = new RequestTelemetry();
+    t.subscribe(() => {
+      throw new Error("bad subscriber");
+    });
+    expect(() => t.record(entry({ status: 500 }))).not.toThrow();
+    expect(t.recent()).toHaveLength(1);
+    expect(t.recent()[0]!.status).toBe(500);
+  });
 });

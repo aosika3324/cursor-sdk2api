@@ -41,4 +41,14 @@ describe("LogSink", () => {
     sink.push({ level: "info", msg: "b", at: 2 });
     expect(seen).toEqual(["a"]);
   });
+
+  it("swallows a throwing subscriber and still buffers the entry", () => {
+    const sink = new LogSink();
+    sink.subscribe(() => {
+      throw new Error("bad subscriber");
+    });
+    expect(() => sink.push({ level: "info", msg: "kept", at: 1 })).not.toThrow();
+    expect(sink.recent()).toHaveLength(1);
+    expect(sink.recent()[0]!.msg).toBe("kept");
+  });
 });

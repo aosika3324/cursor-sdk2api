@@ -34,7 +34,13 @@ export class LogSink {
   push(entry: LogEntry): void {
     this.buf.push(entry);
     if (this.buf.length > this.cap) this.buf.shift();
-    for (const sub of this.subs) sub(entry);
+    for (const sub of this.subs) {
+      try {
+        sub(entry);
+      } catch {
+        // A failing subscriber must not affect logging or the producer.
+      }
+    }
   }
 
   recent(): LogEntry[] {

@@ -36,6 +36,8 @@ import { OrdinaryTurnJournal } from "../core/ordinary-turn-journal.js";
 import { RuntimeLedger } from "../core/runtime-ledger.js";
 import { inspectSandLoader, type SandLoaderHealth } from "../sdk/sand-loader.js";
 import { SessionRegistry } from "../core/session-registry.js";
+import { LogSink } from "../core/log-sink.js";
+import { RequestTelemetry } from "../core/request-telemetry.js";
 import {
   forbiddenError,
   GatewayError,
@@ -155,8 +157,27 @@ export function createApp(input: {
   fetchSandQuota?: typeof fetchCursorSandQuota;
   sandHealth?: SandLoaderHealth;
   assertSandAccess?: (apiKey: string) => Promise<void>;
+  logSink?: LogSink;
+  telemetry?: RequestTelemetry;
 }): App {
-  const { config, sdk, clock, logger, workspaceDir, beforeApplyBoundary } = input;
+  const { config, sdk, clock, workspaceDir, beforeApplyBoundary } = input;
+  const logSink = input.logSink ?? new LogSink();
+  const telemetry = input.telemetry ?? new RequestTelemetry();
+  const baseLogger = input.logger;
+  const logger: Logger = {
+    info: (fields, message) => {
+      logSink.push({ level: "info", msg: String(message), at: clock.now(), ...fields });
+      baseLogger.info(fields, message);
+    },
+    warn: (fields, message) => {
+      logSink.push({ level: "warn", msg: String(message), at: clock.now(), ...fields });
+      baseLogger.warn(fields, message);
+    },
+    error: (fields, message) => {
+      logSink.push({ level: "error", msg: String(message), at: clock.now(), ...fields });
+      baseLogger.error(fields, message);
+    },
+  };
   const fetchSandQuota = input.fetchSandQuota ?? fetchCursorSandQuota;
   const sandHealth = input.sandHealth ?? inspectSandLoader();
   const assertSandAccess = input.assertSandAccess ?? (async (apiKey: string) => {
@@ -429,6 +450,41 @@ export function createApp(input: {
     }
   }, Math.max(20, config.sweepIntervalMs));
   sweepTimer.unref();
+
+  const clientIpOf = (req: IncomingMessage): string =>
+    headerValue(req, "x-forwarded-for")?.split(",")[0]?.trim() || req.socket.remoteAddress || "";
+
+  const recordActivity = (
+    req: IncomingMessage,
+    info: { status: number; model: string; fingerprint: string; startedAt: number },
+  ): void => {
+    telemetry.record({
+      account: info.fingerprint,
+      at: clock.now(),
+      clientIp: clientIpOf(req),
+      model: info.model,
+      status: info.status,
+      credentialId: info.fingerprint,
+      durationMs: clock.now() - info.startedAt,
+    });
+  };
+
+  const withTelemetry = async (
+    req: IncomingMessage,
+    res: ServerResponse,
+    fpRef: { model: string; fingerprint: string },
+    startedAt: number,
+    run: () => Promise<void>,
+  ): Promise<void> => {
+    try {
+      await run();
+      recordActivity(req, { status: res.statusCode, model: fpRef.model, fingerprint: fpRef.fingerprint, startedAt });
+    } catch (error) {
+      const status = error instanceof GatewayError ? error.httpStatus : 502;
+      recordActivity(req, { status, model: fpRef.model, fingerprint: fpRef.fingerprint, startedAt });
+      throw error;
+    }
+  };
 
   const handler = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     const requestId = headerValue(req, "x-request-id") || newRequestId();
@@ -939,36 +995,47 @@ export function createApp(input: {
       }
 
       if (method === "POST" && path === "/v1/messages") {
+        const startedAt = clock.now();
         const client = authorizeClient(req, config);
         const body = await readJsonBody(req, config.maxBodyBytes);
         if (body === undefined) throw invalidRequest("JSON body is required");
         const parsed = parseMessagesRequest(body);
         const sessionHint = headerValue(req, "x-cursor-session-id");
-        await runWithProviderRecovery(res, client, parsed, sessionHint, (auth) =>
-          coordinator.handleMessages(req, res, auth, parsed, requestId, sessionHint));
+        const ref = { model: parsed.model, fingerprint: "" };
+        await withTelemetry(req, res, ref, startedAt, () =>
+          runWithProviderRecovery(res, client, parsed, sessionHint, (auth) => {
+            ref.fingerprint = auth.fingerprint;
+            return coordinator.handleMessages(req, res, auth, parsed, requestId, sessionHint);
+          }));
         return;
       }
 
       if (method === "POST" && path === "/v1/chat/completions") {
+        const startedAt = clock.now();
         const client = authorizeClient(req, config);
         const body = await readJsonBody(req, config.maxBodyBytes);
         if (body === undefined) throw invalidRequest("JSON body is required");
         const chat = parseChatCompletionsRequest(body);
         const sessionHint = headerValue(req, "x-cursor-session-id");
-        await runWithProviderRecovery(res, client, chat.parsed, sessionHint, (auth) =>
-          coordinator.handleMessages(
-            req,
-            res,
-            auth,
-            chat.parsed,
-            requestId,
-            sessionHint,
-            createChatWriterFactory({ includeUsage: chat.includeUsage }),
-          ));
+        const ref = { model: chat.parsed.model, fingerprint: "" };
+        await withTelemetry(req, res, ref, startedAt, () =>
+          runWithProviderRecovery(res, client, chat.parsed, sessionHint, (auth) => {
+            ref.fingerprint = auth.fingerprint;
+            return coordinator.handleMessages(
+              req,
+              res,
+              auth,
+              chat.parsed,
+              requestId,
+              sessionHint,
+              createChatWriterFactory({ includeUsage: chat.includeUsage }),
+            );
+          }));
         return;
       }
 
       if (method === "POST" && path === "/v1/responses") {
+        const startedAt = clock.now();
         const client = authorizeClient(req, config);
         const body = await readJsonBody(req, config.maxBodyBytes);
         if (body === undefined) throw invalidRequest("JSON body is required");
@@ -976,48 +1043,53 @@ export function createApp(input: {
           hostedSearchMode: config.runtimePolicy.hostedSearchMode,
         });
         const sessionHint = headerValue(req, "x-cursor-session-id");
-        if (responses.compaction.trigger) {
-          const auth = await resolveAuth(client, responses.parsed, sessionHint);
-          const minted = mintLocalCompact({
-            store: compactStore,
-            account: auth.fingerprint,
-            profile: runtimeProfileFor(req, client, auth),
-            parsed: responses,
-            sessionHint,
-          });
-          writeLocalCompactResponse({
-            res,
-            clock,
-            requestId,
-            stream: responses.parsed.stream,
-            model: responses.parsed.model,
-            token: minted.token,
-            compactId: minted.record.compactId,
-            sessionId: sessionHint,
-          });
-          return;
-        }
-        await runWithProviderRecovery(res, client, responses.parsed, sessionHint, (auth) => {
-          let hint = sessionHint;
-          if (responses.compaction.encryptedContent) {
-            const bound = bindCompactContinuation({
+        const ref = { model: responses.parsed.model, fingerprint: "" };
+        await withTelemetry(req, res, ref, startedAt, async () => {
+          if (responses.compaction.trigger) {
+            const auth = await resolveAuth(client, responses.parsed, sessionHint);
+            ref.fingerprint = auth.fingerprint;
+            const minted = mintLocalCompact({
               store: compactStore,
-              token: responses.compaction.encryptedContent,
               account: auth.fingerprint,
               profile: runtimeProfileFor(req, client, auth),
               parsed: responses,
+              sessionHint,
             });
-            hint = sessionHint ?? bound.sessionId;
+            writeLocalCompactResponse({
+              res,
+              clock,
+              requestId,
+              stream: responses.parsed.stream,
+              model: responses.parsed.model,
+              token: minted.token,
+              compactId: minted.record.compactId,
+              sessionId: sessionHint,
+            });
+            return;
           }
-          return coordinator.handleMessages(
-            req,
-            res,
-            auth,
-            responses.parsed,
-            requestId,
-            hint,
-            createResponsesWriterFactory(),
-          );
+          await runWithProviderRecovery(res, client, responses.parsed, sessionHint, (auth) => {
+            ref.fingerprint = auth.fingerprint;
+            let hint = sessionHint;
+            if (responses.compaction.encryptedContent) {
+              const bound = bindCompactContinuation({
+                store: compactStore,
+                token: responses.compaction.encryptedContent,
+                account: auth.fingerprint,
+                profile: runtimeProfileFor(req, client, auth),
+                parsed: responses,
+              });
+              hint = sessionHint ?? bound.sessionId;
+            }
+            return coordinator.handleMessages(
+              req,
+              res,
+              auth,
+              responses.parsed,
+              requestId,
+              hint,
+              createResponsesWriterFactory(),
+            );
+          });
         });
         return;
       }
