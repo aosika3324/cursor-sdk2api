@@ -50,6 +50,9 @@ export interface AccountPayload {
     remaining_percent?: unknown;
     plan_label?: unknown;
     next_reset_timestamp_utc?: unknown;
+    block_reason?: unknown;
+    access_state?: unknown;
+    has_available_usage?: unknown;
     reason?: unknown;
   };
   runtime?: {

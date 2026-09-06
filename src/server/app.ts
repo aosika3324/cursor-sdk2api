@@ -10,6 +10,11 @@ import {
 import { fetchCursorSandQuota } from "../account/cursor-dashboard.js";
 import { readAccount } from "../account/service.js";
 import { CursorAccountFileStore, type StoredCursorAccount } from "../account/file-store.js";
+import { onboardCursorAccount, OnboardingError, normalizeSessionToken, looksLikeSessionToken } from "../account/cursor-onboarding.js";
+import { probeSandInference } from "../sdk/sand-probe.js";
+import { SettingsStore } from "../core/settings/store.js";
+import { SETTINGS_SCHEMA, settingsEffect } from "../core/settings/schema.js";
+import { parseProxyValue, SettingsValidationError } from "../core/settings/validate.js";
 import {
   DEFAULT_RUNTIME_PROFILE,
   resolveRequestProfile,
@@ -185,6 +190,19 @@ export function createApp(input: {
   const catalog = new ModelCatalog(sdk, clock, config.catalogCacheMs);
   const accounts = new CursorAccountFileStore(config.stateDir, config.managedCursorKey);
   const accountPool = new CursorAccountPool();
+  const settings = new SettingsStore(config.stateDir, {
+    logLevel: config.logLevel,
+    hostedSearchMode: config.runtimePolicy.hostedSearchMode,
+    globalActiveRuns: config.globalActiveRuns,
+    perCredentialActiveRuns: config.perCredentialActiveRuns,
+    sessionTtlMs: config.sessionTtlMs,
+    replayTtlMs: config.replayTtlMs,
+    firstEventTimeoutMs: config.firstEventTimeoutMs,
+    toolBatchSettleMs: config.toolBatchSettleMs,
+    catalogCacheMs: config.catalogCacheMs,
+    defaultRuntimeProfile: config.runtimePolicy.defaultProfile,
+    allowRequestRuntimeProfile: config.runtimePolicy.allowRequestOverride,
+  });
   const accountPayload = (apiKey: string, defaultProfile?: RuntimeProfile) =>
     readAccount(sdk, apiKey, {
       fetchSandQuota,
@@ -196,7 +214,46 @@ export function createApp(input: {
     key_hint: account.keyHint,
     added_at: account.addedAt,
     default_profile: account.defaultProfile,
+    label: account.label,
+    disabled: account.disabled,
+    priority: account.priority,
+    note: account.note,
+    // Never return the proxy URL or password. The console only needs to know a
+    // proxy exists, its scheme, and its host.
+    proxy: account.proxy
+      ? {
+          configured: true,
+          scheme: new URL(account.proxy.url).protocol.replace(":", ""),
+          host: new URL(account.proxy.url).host,
+          has_username: Boolean(account.proxy.username),
+          has_password: Boolean(account.proxy.password),
+        }
+      : { configured: false },
+    last_error: account.lastError,
   });
+
+  /**
+   * Settings are safe to read back except the proxy, whose URL can carry
+   * credentials in userinfo and whose password is a secret outright.
+   */
+  const redactSettings = (value: ReturnType<typeof settings.get>) => {
+    const { globalProxy, ...rest } = value;
+    return {
+      ...rest,
+      globalProxy: globalProxy
+        ? {
+            configured: true,
+            scheme: new URL(globalProxy.url).protocol.replace(":", ""),
+            host: new URL(globalProxy.url).host,
+            has_username: Boolean(globalProxy.username),
+            has_password: Boolean(globalProxy.password),
+          }
+        : { configured: false },
+      effects: Object.fromEntries(
+        SETTINGS_SCHEMA.map((field) => [field.key, settingsEffect(field.key)]),
+      ),
+    };
+  };
 
   const boundCredentialFingerprint = (parsed: ParsedMessages, sessionHint?: string): string | undefined => {
     if (parsed.continuation) {
@@ -220,7 +277,7 @@ export function createApp(input: {
     const boundFingerprint = parsed ? boundCredentialFingerprint(parsed, sessionHint) : undefined;
     if (boundFingerprint && !excludedFingerprints.has(boundFingerprint)) {
       const bound = accounts.findByFingerprint(boundFingerprint);
-      if (bound) return managedAccountAuth(bound.apiKey, bound.defaultProfile);
+      if (bound) return managedAccountAuth(bound.apiKey, bound.defaultProfile, accounts.getSessionToken(bound.id));
       // A self-contained tool continuation can cold-branch from its full
       // transcript when the originally bound managed account was removed.
       // Completed session follow-ups still require their original account.
@@ -268,7 +325,7 @@ export function createApp(input: {
 
     const selected = accountPool.pick(candidates, parsed?.model ?? "account");
     if (!selected) throw upstreamError("No Cursor account is available", 503);
-    return managedAccountAuth(selected.apiKey, selected.defaultProfile);
+    return managedAccountAuth(selected.apiKey, selected.defaultProfile, accounts.getSessionToken(selected.id));
   };
 
   const resolveAuth = async (
@@ -528,6 +585,202 @@ export function createApp(input: {
         sendJson(res, 200, {
           ...publicAccount(updated),
           account: await accountPayload(updated.apiKey, updated.defaultProfile),
+        }, requestId);
+        return;
+      }
+
+      if (path === "/v0/management/settings/schema" && method === "GET") {
+        sendJson(res, 200, {
+          version: 2,
+          seeded_from_env: settings.isSeededFromEnv(),
+          fields: SETTINGS_SCHEMA.map((field) => ({
+            key: field.key,
+            effect: field.effect,
+            type: field.type,
+            ...(field.min != null ? { min: field.min } : {}),
+            ...(field.max != null ? { max: field.max } : {}),
+            ...(field.values ? { values: field.values } : {}),
+          })),
+          // Restart-only values are reported read-only so the console can show
+          // the running value without implying it is editable.
+          restart_only: {
+            runtime_ledger_v2: config.runtimeLedgerV2,
+            host: config.host,
+            port: config.port,
+            state_dir_configured: Boolean(process.env.STATE_DIR?.trim()),
+          },
+        }, requestId);
+        return;
+      }
+
+      if (path === "/v0/management/settings") {
+        if (method === "GET") {
+          sendJson(res, 200, { settings: redactSettings(settings.get()) }, requestId);
+          return;
+        }
+        if (method === "PUT") {
+          const body = await readJsonBody(req, config.maxBodyBytes) as Record<string, unknown> | undefined;
+          if (!body || typeof body !== "object") throw invalidRequest("A settings object is required");
+          try {
+            const updated = settings.update(body);
+            sendJson(res, 200, { settings: redactSettings(updated) }, requestId);
+          } catch (error) {
+            if (error instanceof SettingsValidationError) throw invalidRequest(error.message);
+            throw error;
+          }
+          return;
+        }
+      }
+
+      if (path === "/v0/management/sand/probe" && method === "POST") {
+        const body = await readJsonBody(req, config.maxBodyBytes) as Record<string, unknown> | undefined;
+        const rawToken = typeof body?.session_token === "string" ? body.session_token.trim() : "";
+        const prompt = typeof body?.prompt === "string" ? body.prompt : "say sand-probe-ok";
+        if (!rawToken) throw invalidRequest("session_token is required");
+        const token = normalizeSessionToken(rawToken);
+        if (!looksLikeSessionToken(token)) throw invalidRequest("session_token is not a valid session token");
+        // Sand auth uses the session-token JWT (a crsr_ key is rejected with
+        // ERROR_NOT_LOGGED_IN). Direct HTTP to InferenceService, bypassing the SDK.
+        const jwt = token.split("::", 2)[1] ?? token;
+        const result = await probeSandInference({ apiKey: jwt, prompt });
+        sendJson(res, 200, { probe: result }, requestId);
+        return;
+      }
+
+      if (path === "/v0/management/accounts/onboard" && method === "POST") {
+        const body = await readJsonBody(req, config.maxBodyBytes) as Record<string, unknown> | undefined;
+        const sessionToken = typeof body?.session_token === "string" ? body.session_token.trim() : "";
+        if (!sessionToken) throw invalidRequest("session_token is required");
+        const keyName = typeof body?.name === "string" ? body.name : undefined;
+        const grantFable5 = body?.grant_fable5 === true;
+        const claimSand = body?.claim_sand === true;
+        let result;
+        try {
+          result = await onboardCursorAccount({ sessionToken, keyName, grantFable5, claimSand });
+        } catch (error) {
+          if (error instanceof OnboardingError) {
+            // Map the closed/unauthorized cases to a clear client error rather
+            // than a 500, so the console can tell the operator what went wrong.
+            throw invalidRequest(`onboarding failed: ${error.reason}`);
+          }
+          throw error;
+        }
+        const storeSessionToken = body?.store_session_token === true;
+        // Persist the minted crsr_ key. Optionally also persist the session
+        // token — required for sand (Bot) inference, which authenticates with
+        // the session-token JWT, not the crsr_ key.
+        const account = accounts.add(result.apiKey);
+        if (storeSessionToken) accounts.setSessionToken(account.id, sessionToken);
+        sendJson(res, 201, {
+          account: publicAccount(account),
+          key_name: result.keyName,
+          fable5: result.fable5,
+          ...(result.sand ? { sand: result.sand } : {}),
+        }, requestId);
+        return;
+      }
+
+      if (path === "/v0/management/accounts/update" && method === "PUT") {
+        const body = await readJsonBody(req, config.maxBodyBytes) as Record<string, unknown> | undefined;
+        const id = typeof body?.id === "string" ? body.id.trim() : "";
+        if (!id) throw invalidRequest("id is required");
+        const patch: { label?: string; disabled?: boolean; priority?: number; note?: string } = {};
+        if (body?.label !== undefined) {
+          if (typeof body.label !== "string") throw invalidRequest("label must be a string");
+          patch.label = body.label;
+        }
+        if (body?.disabled !== undefined) {
+          if (typeof body.disabled !== "boolean") throw invalidRequest("disabled must be a boolean");
+          patch.disabled = body.disabled;
+        }
+        if (body?.priority !== undefined) {
+          if (typeof body.priority !== "number" || !Number.isInteger(body.priority)
+            || body.priority < 0 || body.priority > 1000) {
+            throw invalidRequest("priority must be an integer between 0 and 1000");
+          }
+          patch.priority = body.priority;
+        }
+        if (body?.note !== undefined) {
+          if (typeof body.note !== "string") throw invalidRequest("note must be a string");
+          patch.note = body.note;
+        }
+        const updated = accounts.patch(id, patch);
+        if (!updated) throw notFound("Persistent account was not found");
+        sendJson(res, 200, { account: publicAccount(updated) }, requestId);
+        return;
+      }
+
+      if (path === "/v0/management/accounts/proxy" && method === "PUT") {
+        const body = await readJsonBody(req, config.maxBodyBytes) as Record<string, unknown> | undefined;
+        const id = typeof body?.id === "string" ? body.id.trim() : "";
+        if (!id) throw invalidRequest("id is required");
+        let proxy;
+        try {
+          proxy = parseProxyValue(body?.proxy ?? null, "proxy");
+        } catch (error) {
+          if (error instanceof SettingsValidationError) throw invalidRequest(error.message);
+          throw error;
+        }
+        const updated = accounts.setProxy(id, proxy);
+        if (!updated) throw notFound("Persistent account was not found");
+        sendJson(res, 200, { account: publicAccount(updated) }, requestId);
+        return;
+      }
+
+      if (path === "/v0/management/accounts/batch" && method === "POST") {
+        const body = await readJsonBody(req, config.maxBodyBytes) as Record<string, unknown> | undefined;
+        const ids = Array.isArray(body?.ids) ? body.ids : undefined;
+        const action = typeof body?.action === "string" ? body.action : "";
+        if (!ids || ids.length === 0) throw invalidRequest("ids must be a non-empty array");
+        if (!["enable", "disable", "delete", "priority"].includes(action)) {
+          throw invalidRequest("action must be enable, disable, delete, or priority");
+        }
+        let priority: number | undefined;
+        if (action === "priority") {
+          if (typeof body?.priority !== "number" || !Number.isInteger(body.priority)
+            || body.priority < 0 || body.priority > 1000) {
+            throw invalidRequest("priority must be an integer between 0 and 1000");
+          }
+          priority = body.priority;
+        }
+        // Per-item results: a bad id must not roll back the rest of the batch.
+        const results = ids.map((raw) => {
+          const id = typeof raw === "string" ? raw.trim() : "";
+          if (!id) return { id: String(raw), ok: false, reason: "invalid_id" };
+          if (action === "delete") {
+            return accounts.remove(id) ? { id, ok: true } : { id, ok: false, reason: "not_found" };
+          }
+          const updated = action === "priority"
+            ? accounts.patch(id, { priority })
+            : accounts.patch(id, { disabled: action === "disable" });
+          return updated ? { id, ok: true } : { id, ok: false, reason: "not_found" };
+        });
+        sendJson(res, 200, { results }, requestId);
+        return;
+      }
+
+      if (path === "/v0/management/accounts/verify" && method === "POST") {
+        const body = await readJsonBody(req, config.maxBodyBytes) as Record<string, unknown> | undefined;
+        const id = typeof body?.id === "string" ? body.id.trim() : "";
+        if (!id) throw invalidRequest("id is required");
+        const stored = accounts.get(id);
+        if (!stored) throw notFound("Persistent account was not found");
+        // Real credential probe, not a reachability check: this is what tells an
+        // operator whether the key itself is accepted upstream.
+        const payload = await accountPayload(stored.apiKey, stored.defaultProfile);
+        const usable = payload.status === "ok";
+        const reasons = (payload.reasons ?? {}) as Record<string, unknown>;
+        const failure = usable
+          ? null
+          : {
+              reason: String(reasons.identity ?? reasons.spending ?? "cursor_account_unavailable"),
+              at: clock.now(),
+            };
+        const updated = accounts.setLastError(id, failure) ?? stored;
+        sendJson(res, 200, {
+          account: publicAccount(updated),
+          usable,
+          detail: payload,
         }, requestId);
         return;
       }

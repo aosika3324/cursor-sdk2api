@@ -13,15 +13,32 @@ import { randomUUID } from "node:crypto";
 import { ensurePrivateDir } from "../core/lineage-store.js";
 import { credentialFingerprint } from "../digest.js";
 import { DEFAULT_RUNTIME_PROFILE, type RuntimeProfile } from "../core/runtime-profile.js";
+import type { ProxyCredentials } from "../core/settings/schema.js";
+
+export interface AccountFailure {
+  reason: string;
+  status?: number;
+  at: number;
+}
 
 interface AccountFile {
-  version: 1;
+  version: 1 | 2;
   id: string;
   type: "cursor";
   api_key: string;
   added_at: number;
   default_profile?: RuntimeProfile;
+  label?: string;
+  disabled?: boolean;
+  priority?: number;
+  proxy?: ProxyCredentials | null;
+  note?: string;
+  last_error?: AccountFailure | null;
+  session_token?: string;
 }
+
+
+export const DEFAULT_ACCOUNT_PRIORITY = 100;
 
 export interface StoredCursorAccount {
   id: string;
@@ -29,7 +46,24 @@ export interface StoredCursorAccount {
   addedAt: number;
   keyHint: string;
   defaultProfile: RuntimeProfile;
+  label: string;
+  disabled: boolean;
+  priority: number;
+  proxy: ProxyCredentials | null;
+  note: string;
+  lastError: AccountFailure | null;
+  /** True when a session token (for sand JWT auth) is stored. */
+  hasSessionToken: boolean;
 }
+
+/** Fields an operator may edit through the console. */
+export interface AccountPatch {
+  label?: string;
+  disabled?: boolean;
+  priority?: number;
+  note?: string;
+}
+
 
 const FILE_RE = /^acct_[A-Za-z0-9-]+\.json$/;
 
@@ -45,7 +79,7 @@ function readStoredProfile(value: unknown): RuntimeProfile {
 function isAccountFile(value: unknown): value is AccountFile {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const record = value as Partial<AccountFile>;
-  return record.version === 1
+  return (record.version === 1 || record.version === 2)
     && record.type === "cursor"
     && typeof record.id === "string"
     && typeof record.api_key === "string"
@@ -91,7 +125,7 @@ export class CursorAccountFileStore {
     const existing = this.list().find((account) => credentialFingerprint(account.apiKey) === fingerprint);
     if (existing) return existing;
     const account: AccountFile = {
-      version: 1,
+      version: 2,
       id: `acct_${randomUUID()}`,
       type: "cursor",
       api_key: apiKey,
@@ -111,12 +145,56 @@ export class CursorAccountFileStore {
   }
 
   setDefaultProfile(id: string, profile: RuntimeProfile): StoredCursorAccount | undefined {
+    return this.mutate(id, (account) => ({ ...account, default_profile: profile }));
+  }
+
+  /** Update operator-editable metadata. Absent fields are left unchanged. */
+  patch(id: string, changes: AccountPatch): StoredCursorAccount | undefined {
+    return this.mutate(id, (account) => ({
+      ...account,
+      ...(changes.label !== undefined ? { label: changes.label } : {}),
+      ...(changes.disabled !== undefined ? { disabled: changes.disabled } : {}),
+      ...(changes.priority !== undefined ? { priority: changes.priority } : {}),
+      ...(changes.note !== undefined ? { note: changes.note } : {}),
+    }));
+  }
+
+  /** Set or clear this account's outbound proxy. */
+  setProxy(id: string, proxy: ProxyCredentials | null): StoredCursorAccount | undefined {
+    return this.mutate(id, (account) => ({ ...account, proxy }));
+  }
+
+  /** Record or clear the last upstream failure. Diagnostic only. */
+  setLastError(id: string, failure: AccountFailure | null): StoredCursorAccount | undefined {
+    return this.mutate(id, (account) => ({ ...account, last_error: failure }));
+  }
+
+  /** Persist (or clear) the account's session token used for sand JWT auth. */
+  setSessionToken(id: string, token: string | null): StoredCursorAccount | undefined {
+    return this.mutate(id, (account) => ({
+      ...account,
+      session_token: token ? token : undefined,
+    }));
+  }
+
+  /** Read the raw session token. Not exposed via toPublic. */
+  getSessionToken(id: string): string | undefined {
     const name = `${id}.json`;
     if (!FILE_RE.test(name)) return undefined;
-    const path = join(this.dir, name);
-    const account = this.read(path);
+    const account = this.read(join(this.dir, name));
+    return account?.session_token;
+  }
+
+  private mutate(
+    id: string,
+    change: (account: AccountFile) => AccountFile,
+  ): StoredCursorAccount | undefined {
+    const name = `${id}.json`;
+    if (!FILE_RE.test(name)) return undefined;
+    const account = this.read(join(this.dir, name));
     if (!account) return undefined;
-    const next: AccountFile = { ...account, default_profile: profile };
+    // Any write upgrades the record to v2.
+    const next: AccountFile = { ...change(account), version: 2 };
     this.write(next);
     return this.toPublic(next);
   }
@@ -170,6 +248,16 @@ export class CursorAccountFileStore {
       addedAt: account.added_at,
       keyHint: keyHint(account.api_key),
       defaultProfile: readStoredProfile(account.default_profile),
+      // v1 files predate these fields; absent means the previous behavior.
+      label: typeof account.label === "string" ? account.label : "",
+      disabled: account.disabled === true,
+      priority: typeof account.priority === "number" && Number.isFinite(account.priority)
+        ? account.priority
+        : DEFAULT_ACCOUNT_PRIORITY,
+      proxy: account.proxy ?? null,
+      note: typeof account.note === "string" ? account.note : "",
+      lastError: account.last_error ?? null,
+      hasSessionToken: typeof account.session_token === "string" && account.session_token.length > 0,
     };
   }
 }

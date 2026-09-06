@@ -11,6 +11,18 @@ export interface RosterItem {
   testError?: string;
   account?: AccountPayload;
   models?: ModelsPayload;
+  label?: string;
+  disabled?: boolean;
+  priority?: number;
+  note?: string;
+  proxy?: {
+    configured: boolean;
+    scheme?: string;
+    host?: string;
+    has_username?: boolean;
+    has_password?: boolean;
+  };
+  lastError?: { reason: string; status?: number; at: number } | null;
 }
 
 export function identityLabel(account?: AccountPayload, fallback = ""): string {

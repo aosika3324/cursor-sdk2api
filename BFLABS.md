@@ -20,6 +20,14 @@ This is a public MIT gateway built on the official `@cursor/sdk`. Anthropic Mess
 - Never blindly re-execute a completed external tool.
 - The gateway is a trusted single-process sidecar, not a multi-tenant control plane.
 
+## Sand direct-connect inference
+
+- Sand (Grok Bot) profile inference does NOT go through `@cursor/sdk` — npm `1.0.30` ships no `InferenceService` binding. It connects directly to `https://api2.cursor.sh/aiserver.v1.InferenceService/Stream` via `src/sdk/sand-runtime.ts`.
+- Auth uses the session-token JWT (extracted from a stored `user_...::<jwt>` session token), NOT the `crsr_` key. A `crsr_` key returns `ERROR_NOT_LOGGED_IN` on this endpoint.
+- The `x-cursor-client-version` header must carry a `cli-` prefix (e.g. `cli-1.0.30`); a bare version is rejected with `ERROR_OUTDATED_CLIENT`.
+- The hash-guarded patched SDK clone (`sand-loader.ts` / `sand-patch-contract.ts`) is retained but is NO LONGER used for inference — sand inference now goes direct. Accounts without a stored session token (no `sandJwt`) fall back to the clone path.
+- Session tokens are persisted per-account (opt-in via `store_session_token` at onboarding), stored with the account file's `0o600` permissions, and never exposed via the public account API (only a `hasSessionToken` boolean).
+
 ## Security
 
 Read `docs/SECURITY.md` before changing credentials, account pooling, state, logging, console, proxy, or continuation behavior.

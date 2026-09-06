@@ -5,6 +5,69 @@ export interface ManagementAccount {
   key_hint: string;
   added_at: number;
   default_profile?: "sdk" | "sand";
+  label?: string;
+  disabled?: boolean;
+  priority?: number;
+  note?: string;
+  proxy?: {
+    configured: boolean;
+    scheme?: string;
+    host?: string;
+    has_username?: boolean;
+    has_password?: boolean;
+  };
+  last_error?: { reason: string; status?: number; at: number } | null;
+}
+
+export type SettingsEffect = "hot" | "new_sessions" | "restart";
+
+export interface RuntimeSettingsView {
+  logLevel: string;
+  hostedSearchMode: "off" | "auto";
+  globalActiveRuns: number;
+  perCredentialActiveRuns: number;
+  sessionTtlMs: number;
+  replayTtlMs: number;
+  firstEventTimeoutMs: number;
+  toolBatchSettleMs: number;
+  catalogCacheMs: number;
+  perAccountProxyEnabled: boolean;
+  defaultRuntimeProfile: "sdk" | "sand";
+  allowRequestRuntimeProfile: boolean;
+  globalProxy: {
+    configured: boolean;
+    scheme?: string;
+    host?: string;
+    has_username?: boolean;
+    has_password?: boolean;
+  };
+  effects: Record<string, SettingsEffect>;
+}
+
+export interface SettingsSchema {
+  version: number;
+  seeded_from_env: boolean;
+  fields: Array<{
+    key: string;
+    effect: SettingsEffect;
+    type: "string" | "number" | "boolean" | "enum" | "proxy";
+    min?: number;
+    max?: number;
+    values?: string[];
+  }>;
+  restart_only: Record<string, unknown>;
+}
+
+export interface ProxyInput {
+  url: string;
+  username?: string;
+  password?: string;
+}
+
+export interface BatchResult {
+  id: string;
+  ok: boolean;
+  reason?: string;
 }
 
 export async function getHealth(): Promise<HealthPayload> {
@@ -40,6 +103,37 @@ export async function addManagedAccount(apiKey: string): Promise<ManagementAccou
     body: JSON.stringify({ api_key: apiKey }),
   });
   return body.account;
+}
+
+export interface OnboardResult {
+  account: ManagementAccount;
+  key_name: string;
+  fable5: "granted" | "already" | "skipped" | "failed";
+  sand?: {
+    outcome: "already" | "team_ok" | "activated" | "card_required" | "dead" | "failed";
+    teamId?: number;
+    detail?: string;
+    cardUrl?: string;
+  };
+}
+
+export async function onboardManagedAccount(input: {
+  sessionToken: string;
+  name?: string;
+  grantFable5?: boolean;
+  claimSand?: boolean;
+}): Promise<OnboardResult> {
+  return managementJson<OnboardResult>({
+    method: "POST",
+    path: "/onboard",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      session_token: input.sessionToken,
+      ...(input.name ? { name: input.name } : {}),
+      grant_fable5: input.grantFable5 === true,
+      claim_sand: input.claimSand === true,
+    }),
+  });
 }
 
 export async function setManagedDefaultProfile(
@@ -139,6 +233,83 @@ async function managementJson<T>(
   const response = await fetch(`/v0/management/accounts${init.path ?? ""}`, { ...init, headers });
   if (!response.ok) throw new Error(await errorMessage(response));
   return (await response.json()) as T;
+}
+
+async function settingsJson<T>(init: RequestInit & { path?: string }): Promise<T> {
+  const headers = new Headers(init.headers);
+  const response = await fetch(`/v0/management/settings${init.path ?? ""}`, { ...init, headers });
+  if (!response.ok) throw new Error(await errorMessage(response));
+  return (await response.json()) as T;
+}
+
+export async function getSettings(): Promise<RuntimeSettingsView> {
+  return (await settingsJson<{ settings: RuntimeSettingsView }>({ method: "GET" })).settings;
+}
+
+export async function getSettingsSchema(): Promise<SettingsSchema> {
+  return settingsJson<SettingsSchema>({ method: "GET", path: "/schema" });
+}
+
+export async function updateSettings(
+  patch: Record<string, unknown>,
+): Promise<RuntimeSettingsView> {
+  const body = await settingsJson<{ settings: RuntimeSettingsView }>({
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  return body.settings;
+}
+
+export async function updateManagedAccount(
+  id: string,
+  changes: { label?: string; disabled?: boolean; priority?: number; note?: string },
+): Promise<ManagementAccount> {
+  const body = await managementJson<{ account: ManagementAccount }>({
+    method: "PUT",
+    path: "/update",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ id, ...changes }),
+  });
+  return body.account;
+}
+
+export async function setManagedAccountProxy(
+  id: string,
+  proxy: ProxyInput | null,
+): Promise<ManagementAccount> {
+  const body = await managementJson<{ account: ManagementAccount }>({
+    method: "PUT",
+    path: "/proxy",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ id, proxy }),
+  });
+  return body.account;
+}
+
+export async function batchManagedAccounts(input: {
+  ids: string[];
+  action: "enable" | "disable" | "delete" | "priority";
+  priority?: number;
+}): Promise<BatchResult[]> {
+  const body = await managementJson<{ results: BatchResult[] }>({
+    method: "POST",
+    path: "/batch",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return body.results;
+}
+
+export async function verifyManagedAccount(
+  id: string,
+): Promise<{ usable: boolean; account: ManagementAccount; detail: AccountPayload }> {
+  return managementJson({
+    method: "POST",
+    path: "/verify",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ id }),
+  });
 }
 
 async function errorMessage(response: Response): Promise<string> {

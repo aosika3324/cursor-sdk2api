@@ -129,6 +129,8 @@ export interface CreateAgentInput {
   customTools: Record<string, SdkCustomTool>;
   runtimeProfile?: RuntimeProfile;
   hostedSearch?: boolean;
+  /** Session-token JWT for sand direct-connect inference. */
+  sandJwt?: string;
 }
 
 export interface ResumeAgentInput extends CreateAgentInput {

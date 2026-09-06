@@ -21,6 +21,9 @@ LABEL org.opencontainers.image.title="cursor-sdk2api" \
       org.opencontainers.image.licenses="MIT"
 COPY --from=build --chown=65532:65532 /app/node_modules ./node_modules
 COPY --from=build --chown=65532:65532 /app/dist ./dist
+# Runtime needs this: it declares "type": "module" for dist/*.js and is required
+# by dist/config.js as ../package.json to report the gateway version.
+COPY --from=build --chown=65532:65532 /app/package.json ./package.json
 COPY --from=build --chown=65532:65532 /app/data /data
 COPY --chown=65532:65532 LICENSE NOTICE.md README.md README.zh-CN.md ./
 ENV STATE_DIR=/data
